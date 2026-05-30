@@ -128,23 +128,32 @@ final class AnnotationEditorController {
 
     @objc private func pinAction() {
         guard let cg = annotationView?.exportImage() else { return }
-        let rect = globalRect
+        let scale = screen.backingScaleFactor
+        let out = ImageDecorator.decorate(cg, scale: scale)
+        let size = NSSize(width: CGFloat(out.width) / scale, height: CGFloat(out.height) / scale)
+        // 钉图中心对齐原选区中心（加白边后尺寸会变大）
+        let origin = NSPoint(x: globalRect.midX - size.width / 2,
+                             y: globalRect.midY - size.height / 2)
         close()                      // 先收起编辑器
-        onPin(cg, rect)              // 交给上层创建钉图窗口
+        onPin(out, CGRect(origin: origin, size: size))
     }
 
     // MARK: - 输出
 
     @objc private func copyAction() {
         guard let cg = annotationView?.exportImage() else { return }
-        let img = NSImage(cgImage: cg, size: localRect.size)
+        let scale = screen.backingScaleFactor
+        let out = ImageDecorator.decorate(cg, scale: scale)
+        let size = NSSize(width: CGFloat(out.width) / scale, height: CGFloat(out.height) / scale)
+        let img = NSImage(cgImage: out, size: size)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects([img])
         close()
     }
 
     @objc private func saveAction() {
-        guard let cg = annotationView?.exportImage() else { return }
+        guard let raw = annotationView?.exportImage() else { return }
+        let cg = ImageDecorator.decorate(raw, scale: screen.backingScaleFactor)
         // 收起编辑窗再弹保存框，避免遮挡
         window?.orderOut(nil)
 

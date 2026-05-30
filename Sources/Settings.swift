@@ -33,6 +33,18 @@ final class Settings {
         set { write(newValue, Key.normalCode, Key.normalMods) }
     }
 
+    /// 是否给截图加白色圆角边框（默认关闭）
+    var whiteBorder: Bool {
+        get { d.bool(forKey: "whiteBorder") }
+        set { d.set(newValue, forKey: "whiteBorder") }
+    }
+
+    /// 白边宽度（点），默认 4
+    var borderWidth: CGFloat {
+        get { d.object(forKey: "borderWidth") == nil ? 4 : CGFloat(d.double(forKey: "borderWidth")) }
+        set { d.set(Double(newValue), forKey: "borderWidth") }
+    }
+
     private func read(_ codeKey: String, _ modsKey: String) -> HotKeyCombo? {
         guard d.object(forKey: codeKey) != nil else { return nil }
         let code = UInt16(d.integer(forKey: codeKey))

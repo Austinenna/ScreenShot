@@ -94,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 await MainActor.run {
                     switch mode {
-                    case .quick:  self.deliverQuick(image: cg, pointSize: rect.size)
+                    case .quick:  self.deliverQuick(image: cg, scale: screen.backingScaleFactor)
                     case .normal: self.openEditor(image: cg, globalRect: rect, screen: screen)
                     }
                 }
@@ -104,8 +104,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // 快捷模式：直接复制
     @MainActor
-    private func deliverQuick(image: CGImage, pointSize: CGSize) {
-        let nsImage = NSImage(cgImage: image, size: pointSize)
+    private func deliverQuick(image: CGImage, scale: CGFloat) {
+        let out = ImageDecorator.decorate(image, scale: scale)
+        let pointSize = NSSize(width: CGFloat(out.width) / scale, height: CGFloat(out.height) / scale)
+        let nsImage = NSImage(cgImage: out, size: pointSize)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects([nsImage])
         notify(text: "已复制到剪贴板")
