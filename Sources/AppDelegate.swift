@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlay: OverlayController?
     private var editor: AnnotationEditorController?
     private var settingsWC: SettingsWindowController?
+    private var pins: [PinController] = []   // 持有钉图窗口，防止被释放
 
     private var quickHotKeyID: UInt32?
     private var normalHotKeyID: UInt32?
@@ -113,10 +114,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // 正常模式：进入标注编辑器
     @MainActor
     private func openEditor(image: CGImage, globalRect: CGRect, screen: NSScreen) {
-        editor = AnnotationEditorController(image: image, globalRect: globalRect, screen: screen) {
-            [weak self] in self?.editor = nil
-        }
+        editor = AnnotationEditorController(
+            image: image, globalRect: globalRect, screen: screen,
+            onClose: { [weak self] in self?.editor = nil },
+            onPin: { [weak self] cg, rect in self?.pin(image: cg, globalRect: rect) })
         editor?.show()
+    }
+
+    // 创建一个钉图窗口并持有
+    @MainActor
+    private func pin(image: CGImage, globalRect: CGRect) {
+        let pin = PinController(image: image, globalRect: globalRect) { [weak self] controller in
+            self?.pins.removeAll { $0 === controller }
+        }
+        pins.append(pin)
+        pin.show()
     }
 
     // MARK: - 设置

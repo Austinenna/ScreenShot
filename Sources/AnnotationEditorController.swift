@@ -4,18 +4,25 @@ import AppKit
 final class AnnotationEditorController {
     private let screen: NSScreen
     private let image: CGImage
+    private let globalRect: CGRect         // 选区全局坐标（点）
     private let localRect: NSRect          // 选区在该屏幕的局部坐标（点）
     private let onClose: () -> Void
+    private let onPin: (CGImage, CGRect) -> Void
 
     private var window: OverlayWindow?
     private var annotationView: AnnotationView?
     private var toolButtons: [Tool: NSButton] = [:]
 
     /// - globalRect: 选区全局坐标；image: 已截好的该区域图
-    init(image: CGImage, globalRect: CGRect, screen: NSScreen, onClose: @escaping () -> Void) {
+    /// - onPin: 用户点「钉图」时回调（带合成图 + 全局位置），由上层创建钉图窗口
+    init(image: CGImage, globalRect: CGRect, screen: NSScreen,
+         onClose: @escaping () -> Void,
+         onPin: @escaping (CGImage, CGRect) -> Void) {
         self.image = image
         self.screen = screen
+        self.globalRect = globalRect
         self.onClose = onClose
+        self.onPin = onPin
         self.localRect = NSRect(x: globalRect.minX - screen.frame.minX,
                                 y: globalRect.minY - screen.frame.minY,
                                 width: globalRect.width, height: globalRect.height)
@@ -57,13 +64,15 @@ final class AnnotationEditorController {
 
     private func buildToolbar() -> NSView {
         let items: [(Tool?, String, String, Selector)] = [
-            (.line, "line.diagonal", "直线", #selector(selLine)),
-            (.box,  "rectangle",     "方框", #selector(selBox)),
-            (.text, "textformat",    "文字", #selector(selText)),
-            (nil,   "arrow.uturn.backward", "撤销", #selector(undo)),
-            (nil,   "doc.on.doc",    "复制", #selector(copyAction)),
-            (nil,   "square.and.arrow.down", "保存", #selector(saveAction)),
-            (nil,   "xmark",         "取消", #selector(cancel)),
+            (.line,  "line.diagonal",      "直线", #selector(selLine)),
+            (.arrow, "arrow.up.right",     "箭头", #selector(selArrow)),
+            (.box,   "rectangle",          "方框", #selector(selBox)),
+            (.text,  "textformat",         "文字", #selector(selText)),
+            (nil,    "arrow.uturn.backward", "撤销", #selector(undo)),
+            (nil,    "pin",                "钉图", #selector(pinAction)),
+            (nil,    "doc.on.doc",         "复制", #selector(copyAction)),
+            (nil,    "square.and.arrow.down", "保存", #selector(saveAction)),
+            (nil,    "xmark",              "取消", #selector(cancel)),
         ]
 
         let btnW: CGFloat = 44, btnH: CGFloat = 36, pad: CGFloat = 6
@@ -111,10 +120,18 @@ final class AnnotationEditorController {
         }
     }
 
-    @objc private func selLine() { annotationView?.tool = .line; updateToolHighlight() }
-    @objc private func selBox()  { annotationView?.tool = .box;  updateToolHighlight() }
-    @objc private func selText() { annotationView?.tool = .text; updateToolHighlight() }
-    @objc private func undo()    { annotationView?.undo() }
+    @objc private func selLine()  { annotationView?.tool = .line;  updateToolHighlight() }
+    @objc private func selArrow() { annotationView?.tool = .arrow; updateToolHighlight() }
+    @objc private func selBox()   { annotationView?.tool = .box;   updateToolHighlight() }
+    @objc private func selText()  { annotationView?.tool = .text;  updateToolHighlight() }
+    @objc private func undo()     { annotationView?.undo() }
+
+    @objc private func pinAction() {
+        guard let cg = annotationView?.exportImage() else { return }
+        let rect = globalRect
+        close()                      // 先收起编辑器
+        onPin(cg, rect)              // 交给上层创建钉图窗口
+    }
 
     // MARK: - 输出
 

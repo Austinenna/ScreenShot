@@ -56,6 +56,8 @@ final class AnnotationView: NSView {
         switch tool {
         case .line:
             Annotation.line(from: s, to: c).draw()
+        case .arrow:
+            Annotation.arrow(from: s, to: c).draw()
         case .box:
             Annotation.box(rect: rectBetween(s, c)).draw()
         case .text:
@@ -90,6 +92,8 @@ final class AnnotationView: NSView {
         switch tool {
         case .line:
             if s.distance(to: c) > 2 { annotations.append(.line(from: s, to: c)) }
+        case .arrow:
+            if s.distance(to: c) > 2 { annotations.append(.arrow(from: s, to: c)) }
         case .box:
             let r = rectBetween(s, c)
             if r.width > 2 && r.height > 2 { annotations.append(.box(rect: r)) }
