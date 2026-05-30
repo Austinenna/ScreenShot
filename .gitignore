@@ -1,7 +1,11 @@
-# 编译产物
+# 编译/打包产物
 ScreenShot.app/
 *.o
 *.swiftmodule
+*.dmg
+AppIcon.icns
+AppIcon.iconset/
+# 注：Icon.png 作为图标源图保留入库
 
 # 临时证书材料（请勿提交私钥）
 *.p12

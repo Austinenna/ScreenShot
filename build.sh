@@ -8,6 +8,12 @@ mkdir -p "$APP/Contents/MacOS"
 
 cp Info.plist "$APP/Contents/Info.plist"
 
+# 有图标就嵌进去（AppIcon.icns 由 make-icon.sh 生成）
+if [ -f AppIcon.icns ]; then
+  mkdir -p "$APP/Contents/Resources"
+  cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+fi
+
 swiftc -O \
   Sources/*.swift \
   -o "$APP/Contents/MacOS/ScreenShot" \

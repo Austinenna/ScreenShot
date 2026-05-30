@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScreenShot 截图工具 · 项目总结</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --border:#2a313c;
+    --text:#e6edf3; --muted:#9aa7b4; --accent:#4ea1ff; --accent2:#7ee787;
+    --warn:#f0b429; --red:#ff7b72; --code:#0a0e14; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,"SF Pro SC","PingFang SC",system-ui,sans-serif;
+    line-height:1.7; font-size:15px;}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+  header.hero{padding:64px 24px 40px; text-align:center;
+    background:radial-gradient(1200px 400px at 50% -120px, rgba(78,161,255,.18), transparent);
+    border-bottom:1px solid var(--border);}
+  .hero h1{font-size:40px; margin:0 0 10px; letter-spacing:.5px}
+  .hero p{color:var(--muted); margin:6px 0; font-size:16px}
+  .badges{margin-top:18px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap}
+  .badge{background:var(--panel); border:1px solid var(--border); border-radius:999px;
+    padding:5px 14px; font-size:13px; color:var(--muted)}
+  .badge b{color:var(--accent)}
+  nav.toc{position:sticky; top:0; z-index:10; background:rgba(13,17,23,.85);
+    backdrop-filter:blur(10px); border-bottom:1px solid var(--border); padding:10px 0}
+  nav.toc .wrap{display:flex; gap:6px; flex-wrap:wrap}
+  nav.toc a{color:var(--muted); text-decoration:none; font-size:13px;
+    padding:6px 12px; border-radius:8px; white-space:nowrap}
+  nav.toc a:hover{background:var(--panel); color:var(--text)}
+  section{padding:42px 0; border-bottom:1px solid var(--border)}
+  h2{font-size:26px; margin:0 0 6px; display:flex; align-items:center; gap:10px}
+  h2 .n{font-size:14px; color:var(--accent); background:var(--panel);
+    border:1px solid var(--border); border-radius:8px; padding:2px 9px; font-weight:600}
+  .lead{color:var(--muted); margin:0 0 22px}
+  h3{font-size:18px; margin:26px 0 10px}
+  .grid{display:grid; gap:14px}
+  .grid.c2{grid-template-columns:1fr 1fr}
+  .grid.c3{grid-template-columns:1fr 1fr 1fr}
+  @media(max-width:760px){.grid.c2,.grid.c3{grid-template-columns:1fr}}
+  .card{background:var(--panel); border:1px solid var(--border);
+    border-radius:var(--radius); padding:18px 20px}
+  .card h4{margin:0 0 8px; font-size:15px; color:var(--accent2)}
+  .card p{margin:0; color:var(--muted); font-size:14px}
+  table{width:100%; border-collapse:collapse; margin:8px 0 4px; font-size:14px;
+    background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden}
+  th,td{text-align:left; padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:top}
+  th{background:var(--panel2); color:var(--text); font-weight:600}
+  td{color:var(--muted)}
+  td code,p code,li code{background:var(--code); color:var(--accent2);
+    padding:2px 6px; border-radius:6px; font-size:13px; font-family:"SF Mono",ui-monospace,Menlo,monospace}
+  tr:last-child td{border-bottom:none}
+  pre{background:var(--code); border:1px solid var(--border); border-radius:var(--radius);
+    padding:16px 18px; overflow:auto; font-size:13px; line-height:1.6;
+    font-family:"SF Mono",ui-monospace,Menlo,monospace}
+  pre .c{color:#6a7785} pre .k{color:#ff7b72} pre .s{color:#a5d6ff} pre .f{color:#d2a8ff}
+  .flow{display:flex; flex-direction:column; gap:10px; margin:10px 0}
+  .frow{display:flex; gap:10px; flex-wrap:wrap; align-items:stretch}
+  .node{background:var(--panel); border:1px solid var(--border); border-radius:12px;
+    padding:12px 16px; font-size:14px; flex:1; min-width:150px}
+  .node b{color:var(--accent); display:block; font-size:13px; margin-bottom:2px}
+  .node small{color:var(--muted)}
+  .arrow{align-self:center; color:var(--muted); font-size:20px; padding:0 2px}
+  .split{display:flex; gap:10px; flex-wrap:wrap}
+  .split .node:first-child{border-color:rgba(126,231,135,.4)}
+  .split .node:last-child{border-color:rgba(78,161,255,.4)}
+  .note{border-left:3px solid var(--accent); background:var(--panel);
+    padding:12px 16px; border-radius:0 10px 10px 0; margin:14px 0; font-size:14px}
+  .note.warn{border-color:var(--warn)} .note.red{border-color:var(--red)}
+  .note b{color:var(--text)}
+  .tree{font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:13px; line-height:1.8}
+  .tree .d{color:var(--accent)} .tree .cm{color:var(--muted)}
+  .steps{counter-reset:s; list-style:none; padding:0; margin:0}
+  .steps>li{position:relative; padding:0 0 18px 42px; margin:0}
+  .steps>li:before{counter-increment:s; content:counter(s);
+    position:absolute; left:0; top:0; width:28px; height:28px; border-radius:8px;
+    background:var(--accent); color:#04101f; font-weight:700; display:flex;
+    align-items:center; justify-content:center; font-size:14px}
+  .steps>li:not(:last-child):after{content:""; position:absolute; left:13px; top:30px;
+    bottom:2px; width:2px; background:var(--border)}
+  .steps h4{margin:2px 0 6px; font-size:15px}
+  .steps p{margin:0; color:var(--muted); font-size:14px}
+  footer{padding:34px 24px 60px; text-align:center; color:var(--muted); font-size:13px}
+  .pill{display:inline-block; padding:1px 8px; border-radius:6px; font-size:12px; font-weight:600}
+  .pill.ok{background:rgba(126,231,135,.15); color:var(--accent2)}
+  .pill.no{background:rgba(255,123,114,.15); color:var(--red)}
+  .pill.mid{background:rgba(240,180,41,.15); color:var(--warn)}
+</style>
+</head>
+<body>
+
+<header class="hero"><div class="wrap">
+  <h1>📸 ScreenShot 截图工具</h1>
+  <p>macOS 原生截图标注工具 · 项目实现总结</p>
+  <p style="font-size:14px">位置：<code style="background:var(--panel);padding:3px 8px;border-radius:6px">~/ScreenShotPrototype</code></p>
+  <div class="badges">
+    <span class="badge"><b>Swift 6</b> + AppKit</span>
+    <span class="badge"><b>ScreenCaptureKit</b></span>
+    <span class="badge"><b>Carbon</b> 全局快捷键</span>
+    <span class="badge">零第三方依赖</span>
+    <span class="badge">macOS 14+</span>
+  </div>
+</div></header>
+
+<nav class="toc"><div class="wrap">
+  <a href="#overview">概览</a>
+  <a href="#stack">技术栈</a>
+  <a href="#structure">项目结构</a>
+  <a href="#flow">核心流程</a>
+  <a href="#highlights">关键技术点</a>
+  <a href="#signing">签名与权限</a>
+  <a href="#dmg">打包 DMG</a>
+  <a href="#appstore">上架 App Store</a>
+  <a href="#cheats">命令速查</a>
+</div></nav>
+
+<section id="overview"><div class="wrap">
+  <h2><span class="n">01</span> 概览</h2>
+  <p class="lead">一个常驻菜单栏的截图工具，全局快捷键触发，支持两种工作模式与标注、钉图、自动保存。</p>
+  <div class="grid c2">
+    <div class="card"><h4>⚡ 快捷模式（默认 ⌥A）</h4>
+      <p>框选 → 截图 → 直接复制到剪贴板。不保存、不打扰，主打一个快。</p></div>
+    <div class="card"><h4>✏️ 正常模式（默认 ⌥S）</h4>
+      <p>框选 → 截图 → 进入标注编辑器：直线 / 箭头 / 方框 / 文字，再复制 / 保存 / 钉图。</p></div>
+  </div>
+  <h3>功能清单</h3>
+  <div class="grid c3">
+    <div class="card"><h4>区域框选</h4><p>全屏遮罩 + 十字光标，实时尺寸显示。</p></div>
+    <div class="card"><h4>标注工具</h4><p>直线、箭头、方框、文字，撤销（⌘Z）。</p></div>
+    <div class="card"><h4>钉图 📌</h4><p>浮动置顶，可拖动 / 滚轮缩放 / Esc·双击·右键关闭。</p></div>
+    <div class="card"><h4>白色圆角边框</h4><p>可选开关 + 宽度滑块，等宽白框。</p></div>
+    <div class="card"><h4>自定义快捷键</h4><p>全局键 + 工具栏键（1/2/3）均可在设置里改。</p></div>
+    <div class="card"><h4>自动保存</h4><p>保存目录可配置，点保存直接落盘不弹框。</p></div>
+  </div>
+</div></section>
+
+<section id="stack"><div class="wrap">
+  <h2><span class="n">02</span> 技术栈</h2>
+  <p class="lead">全部用系统原生框架，零第三方依赖，编译产物仅约 250KB。</p>
+  <table>
+    <tr><th width="180">领域</th><th>技术</th><th>用途</th></tr>
+    <tr><td>语言 / UI</td><td><code>Swift 6</code> · <code>AppKit</code></td><td>整个应用</td></tr>
+    <tr><td>屏幕截取</td><td><code>ScreenCaptureKit</code>（<code>SCScreenshotManager</code>）</td><td>截屏，macOS 14+ 官方推荐</td></tr>
+    <tr><td>全局快捷键</td><td><code>Carbon</code> <code>RegisterEventHotKey</code></td><td>系统级快捷键，无需辅助功能权限</td></tr>
+    <tr><td>绘制 / 合成</td><td><code>Core Graphics</code> · <code>NSBezierPath</code> · <code>CGContext</code></td><td>标注绘制、全分辨率导出、白边</td></tr>
+    <tr><td>图像编码</td><td><code>NSBitmapImageRep</code></td><td>PNG 编码、剪贴板</td></tr>
+    <tr><td>持久化</td><td><code>UserDefaults</code></td><td>快捷键、边框、保存路径等设置</td></tr>
+    <tr><td>窗口管理</td><td><code>NSWindow</code>（borderless / floating）</td><td>遮罩窗、编辑器、钉图窗</td></tr>
+  </table>
+</div></section>
+
+<section id="structure"><div class="wrap">
+  <h2><span class="n">03</span> 项目结构</h2>
+  <p class="lead">按职责拆分成小文件，单一职责、互相解耦，方便继续扩展。</p>
+  <div class="card"><div class="tree">
+<span class="d">ScreenShotPrototype/</span>
+├── build.sh              <span class="cm"># 编译 + 签名脚本，一键产出 .app</span>
+├── Info.plist            <span class="cm"># 应用配置（菜单栏应用、最低 macOS 14）</span>
+├── README.md
+└── <span class="d">Sources/</span>
+    ├── main.swift                       <span class="cm"># 入口，.accessory 模式启动</span>
+    ├── AppDelegate.swift                <span class="cm"># 编排中心：菜单栏/快捷键/模式分支/持有钉图</span>
+    │
+    ├── HotKeyManager.swift              <span class="cm"># 全局快捷键封装（Carbon）</span>
+    ├── KeyCodeMap.swift                 <span class="cm"># 键码↔字符、Cocoa↔Carbon 修饰键转换</span>
+    ├── Settings.swift                   <span class="cm"># 所有设置的持久化（UserDefaults）</span>
+    ├── HotKeyRecorderView.swift         <span class="cm"># 快捷键录制控件（单键/强制修饰键）</span>
+    ├── SettingsWindowController.swift   <span class="cm"># 设置窗口（从上而下自动排版）</span>
+    │
+    ├── OverlayController.swift          <span class="cm"># 全屏遮罩窗口（置顶、可成 key）</span>
+    ├── SelectionView.swift              <span class="cm"># 框选交互 + 绘制 + 十字光标</span>
+    ├── CaptureService.swift             <span class="cm"># 整屏截取 + 像素级裁剪 + 坐标换算</span>
+    │
+    ├── Annotation.swift                 <span class="cm"># 标注模型（线/箭头/框/文字）+ 绘制</span>
+    ├── AnnotationView.swift             <span class="cm"># 标注画布 + 全分辨率合成导出</span>
+    ├── AnnotationEditorController.swift <span class="cm"># 编辑器窗口 + 工具条 + 快捷键</span>
+    │
+    ├── PinController.swift              <span class="cm"># 钉图浮动窗口（拖动/缩放/关闭）</span>
+    ├── ImageDecorator.swift             <span class="cm"># 白色圆角边框</span>
+    └── ImageSaver.swift                 <span class="cm"># 存 PNG 到指定目录</span>
+  </div></div>
+</div></section>
+
+<section id="flow"><div class="wrap">
+  <h2><span class="n">04</span> 核心流程</h2>
+  <p class="lead">从触发到输出的主链路，两种模式在「截取」之后分叉。</p>
+  <div class="flow">
+    <div class="frow">
+      <div class="node"><b>触发</b><small>全局快捷键 / 菜单栏</small></div>
+      <span class="arrow">→</span>
+      <div class="node"><b>框选</b><small>OverlayController + SelectionView<br>全屏遮罩，拖拽选区</small></div>
+      <span class="arrow">→</span>
+      <div class="node"><b>截取</b><small>CaptureService<br>整屏全像素 → 像素级裁剪</small></div>
+    </div>
+    <div class="frow" style="justify-content:center"><span class="arrow">↓ 按模式分叉</span></div>
+    <div class="split">
+      <div class="node"><b>⚡ 快捷模式</b><small>ImageDecorator（可选白边）<br>→ 写入剪贴板 → 完成</small></div>
+      <div class="node"><b>✏️ 正常模式</b><small>AnnotationEditorController<br>标注 → 复制 / 保存 / 钉图（可选白边）</small></div>
+    </div>
+  </div>
+</div></section>
+
+<section id="highlights"><div class="wrap">
+  <h2><span class="n">05</span> 关键技术点</h2>
+  <p class="lead">几个容易踩坑、值得说明的实现细节。</p>
+
+  <h3>① Retina 全分辨率，绝不发虚</h3>
+  <p>不让 ScreenCaptureKit 的 <code>sourceRect</code> 帮忙裁剪（它会先按「点」取图再缩放，导致模糊）。改为<b>整屏按全像素截取，再用 <code>CGImage.cropping</code> 做像素级裁剪</b>，零重采样。</p>
+  <pre><span class="c">// 输出像素 = 点尺寸 × backingScaleFactor</span>
+config.width  = Int(screen.frame.width  * scale)
+config.height = Int(screen.frame.height * scale)
+<span class="k">let</span> full = <span class="k">try await</span> SCScreenshotManager.<span class="f">captureImage</span>(...)
+<span class="k">return</span> full.<span class="f">cropping</span>(to: pixelRect)   <span class="c">// 纯像素拷贝</span></pre>
+
+  <h3>② 坐标系换算</h3>
+  <p>AppKit 用<b>左下角</b>为原点，ScreenCaptureKit / CGImage 用<b>左上角</b>。框选得到的全局坐标要先转成屏幕局部坐标，再翻转 Y，再乘以 scale 才是像素裁剪区。</p>
+
+  <h3>③ 全局快捷键用 Carbon</h3>
+  <p><code>RegisterEventHotKey</code> 是系统级、<b>无需「辅助功能」权限</b>，菜单栏 accessory 应用也能用。封装在 <code>HotKeyManager</code> 里，用一个 C 回调按 id 分发到对应 handler。</p>
+
+  <h3>④ 标注合成导出</h3>
+  <p>标注用「屏幕局部点坐标」存储；导出时建一张 <code>NSBitmapImageRep</code>，<code>rep.size</code> 设为点尺寸、像素数设为 <code>点 × scale</code>，于是绘制按点坐标走、输出却是全分辨率，截图与标注一次性合成。</p>
+
+  <h3>⑤ 钉图窗口</h3>
+  <p>borderless + <code>.floating</code> 层级的 <code>NSWindow</code>，自己处理 <code>mouseDragged</code> 移动、<code>scrollWheel</code> 缩放、<code>cancelOperation</code>(Esc) / 双击 / 右键关闭。由 AppDelegate 用数组持有，防止被释放。</p>
+</div></section>
+
+<section id="signing"><div class="wrap">
+  <h2><span class="n">06</span> 签名与权限（重点）</h2>
+  <p class="lead">这是开发期最折腾、也最值得记录的一块。</p>
+  <div class="note red"><b>问题：</b>每次重新编译后，系统都重新索要「屏幕录制」权限。</div>
+  <p><b>原因：</b>macOS 的屏幕录制授权绑定在 app 的<b>代码签名身份</b>上。临时签名（ad-hoc）没有稳定身份，TCC 只能用<b>二进制哈希 cdhash</b> 记授权 —— 每次改代码重编，cdhash 变了，系统就当成新 app，权限失效。</p>
+
+  <h3>解决：用一个固定的自签名证书</h3>
+  <ol class="steps">
+    <li><h4>用 openssl 生成自签名证书（带 Code Signing 用途）</h4>
+      <p>生成私钥 + 自签名证书，打包成 <code>.p12</code>（注意用 legacy 算法，否则 macOS <code>security</code> 验不了）。</p></li>
+    <li><h4>导入登录钥匙串</h4>
+      <p><code>security import ss.p12 -k login.keychain-db -T /usr/bin/codesign</code>，得到名为 <code>ScreenShot Dev Cert</code> 的身份。</p></li>
+    <li><h4>build.sh 用它签名</h4><p>找得到证书就用它，否则回退临时签名。</p></li>
+    <li><h4>授权一次，永久生效</h4>
+      <p>「指定要求」绑定的是<b>证书指纹 + Bundle ID</b>（不含 cdhash），之后随便重编都不再掉权限。</p></li>
+  </ol>
+
+  <pre><span class="c"># build.sh 里的签名逻辑</span>
+SIGN_ID=<span class="s">"ScreenShot Dev Cert"</span>
+<span class="k">if</span> security find-certificate -c <span class="s">"$SIGN_ID"</span> &gt;/dev/null 2&gt;&amp;1; <span class="k">then</span>
+  codesign --force --deep --sign <span class="s">"$SIGN_ID"</span> <span class="s">"$APP"</span>
+<span class="k">else</span>
+  codesign --force --deep --sign - <span class="s">"$APP"</span>   <span class="c"># 回退临时签名</span>
+<span class="k">fi</span></pre>
+
+  <p>验证绑定关系（这条「指定要求」只认证书 + BundleID）：</p>
+  <pre>$ codesign -d --requirements - ScreenShot.app
+designated =&gt; identifier <span class="s">"com.prototype.screenshot"</span>
+            <span class="k">and</span> certificate leaf = H<span class="s">"a3e05d…"</span></pre>
+
+  <div class="note warn"><b>codesign 老问钥匙串密码？</b>
+    那是私钥的访问控制没放行 codesign。弹框时输入登录密码并点
+    <span class="pill mid">始终允许</span>（不是「允许」），即可永久免密。</div>
+  <div class="note"><b>安全说明：</b>这个自签名证书<b>没有</b>被设为系统受信任根（那会削弱系统信任模型）。签名本身不需要信任，TCC 也照样能稳定识别 —— 这是最干净的本地开发方案。</div>
+</div></section>
+
+<section id="dmg"><div class="wrap">
+  <h2><span class="n">07</span> 后续：打包成 DMG 分发</h2>
+  <p class="lead">想发给别人用、不上架 App Store，标准路径是 <b>Developer ID 签名 + 公证 + DMG</b>。</p>
+  <table>
+    <tr><th width="200">步骤</th><th>说明</th></tr>
+    <tr><td>① 加入开发者计划</td><td>Apple Developer Program，<b>$99/年</b>。否则别人下载会被 Gatekeeper 拦截。</td></tr>
+    <tr><td>② Developer ID 证书</td><td>后台申请 <code>Developer ID Application</code> 证书，替换现在的自签名证书。</td></tr>
+    <tr><td>③ hardened runtime 签名</td><td><code>codesign --options runtime --sign "Developer ID Application: …"</code></td></tr>
+    <tr><td>④ 制作 DMG</td><td>用 <code>create-dmg</code> 或 <code>hdiutil</code> 打包成磁盘镜像。</td></tr>
+    <tr><td>⑤ 公证（Notarization）</td><td><code>xcrun notarytool submit</code> 上传给 Apple 自动审核（几分钟）。</td></tr>
+    <tr><td>⑥ 装订（Staple）</td><td><code>xcrun stapler staple</code> 把公证票据钉到 DMG/app，离线也能验证。</td></tr>
+  </table>
+  <pre><span class="c"># 1) 用 Developer ID 重新签名（hardened runtime）</span>
+codesign --force --deep --options runtime \
+  --sign <span class="s">"Developer ID Application: Your Name (TEAMID)"</span> ScreenShot.app
+
+<span class="c"># 2) 做一个 DMG（brew install create-dmg）</span>
+create-dmg --volname <span class="s">"ScreenShot"</span> --app-drop-link 380 120 \
+  ScreenShot.dmg ScreenShot.app
+
+<span class="c"># 3) 公证</span>
+xcrun notarytool submit ScreenShot.dmg \
+  --apple-id <span class="s">"you@example.com"</span> --team-id TEAMID \
+  --password <span class="s">"app-专用密码"</span> --wait
+
+<span class="c"># 4) 装订票据</span>
+xcrun stapler staple ScreenShot.dmg</pre>
+  <div class="note"><b>对这个工具而言，DMG 是更省事的分发方式</b> —— 不用进沙盒，全局快捷键、ScreenCaptureKit、任意目录保存都能照常工作。</div>
+</div></section>
+
+<section id="appstore"><div class="wrap">
+  <h2><span class="n">08</span> 后续：上架 Mac App Store</h2>
+  <p class="lead">App Store 强制 <b>App Sandbox（沙盒）</b>，对这类系统级工具有几处需要改造。</p>
+  <table>
+    <tr><th width="180">能力</th><th>沙盒下情况</th><th>需要做的</th></tr>
+    <tr><td>屏幕录制</td><td><span class="pill ok">可用</span></td><td>用户授权即可，ScreenCaptureKit 支持沙盒。</td></tr>
+    <tr><td>全局快捷键</td><td><span class="pill mid">受限</span></td><td><code>RegisterEventHotKey</code> 在沙盒内可用，但 Carbon 已弃用；建议迁到现代方案或评估风险。</td></tr>
+    <tr><td>任意目录保存</td><td><span class="pill no">受限</span></td><td>沙盒禁止直接写任意路径。须用 <code>NSOpenPanel</code> 让用户授权，并保存<b>安全作用域书签</b>（security-scoped bookmark）持久化访问权。</td></tr>
+    <tr><td>钉图浮动窗</td><td><span class="pill ok">可用</span></td><td>无需改动。</td></tr>
+    <tr><td>菜单栏 accessory</td><td><span class="pill ok">可用</span></td><td><code>LSUIElement</code> 允许上架。</td></tr>
+  </table>
+
+  <h3>上架流程</h3>
+  <ol class="steps">
+    <li><h4>开通开发者计划 + 创建 App ID</h4><p>在 App Store Connect 注册 App，配置 Bundle ID。</p></li>
+    <li><h4>开启 App Sandbox 并配置 entitlements</h4>
+      <p>勾选屏幕录制、用户选择文件读写等权限；把保存目录改为安全作用域书签。</p></li>
+    <li><h4>用 Apple Distribution 证书 + 描述文件签名</h4>
+      <p><code>Apple Distribution</code> 证书 + App Store 的 provisioning profile。</p></li>
+    <li><h4>准备素材</h4><p>App 图标（含 1024×1024）、截图、隐私政策、分级信息。</p></li>
+    <li><h4>用 Xcode / altool 上传并提交审核</h4><p>Archive → 上传 → App Store Connect 填写元数据 → 提交人工审核。</p></li>
+  </ol>
+
+  <div class="note warn"><b>当前项目改造量评估：</b>
+    最大的两块是 ——（1）把<b>固定保存目录</b>改成安全作用域书签；（2）评估 <b>Carbon 全局快捷键</b>在审核中的接受度。其余功能基本可平移。整体而言，<b>这类工具走 DMG 直分发更顺；要触达普通用户再考虑 App Store。</b></div>
+</div></section>
+
+<section id="cheats"><div class="wrap">
+  <h2><span class="n">09</span> 命令速查</h2>
+  <pre><span class="c"># 编译 + 签名（产出 ScreenShot.app）</span>
+./build.sh
+
+<span class="c"># 运行</span>
+open ScreenShot.app
+
+<span class="c"># 看签名身份</span>
+codesign -dvvv ScreenShot.app
+
+<span class="c"># 看「指定要求」（确认绑定证书而非 cdhash）</span>
+codesign -d --requirements - ScreenShot.app
+
+<span class="c"># 看保存出的 PNG 真实像素（验证 Retina 分辨率）</span>
+sips -g pixelWidth -g pixelHeight ~/Desktop/Shot-*.png
+
+<span class="c"># 列出可用签名证书</span>
+security find-identity -p codesigning</pre>
+
+  <h3>开发进度（git）</h3>
+  <table>
+    <tr><th width="120">提交</th><th>内容</th></tr>
+    <tr><td><code>9d83362</code></td><td>第一版原型（框选 / 截图 / 复制 / 保存）</td></tr>
+    <tr><td><code>fe32277</code></td><td>箭头标注 + 钉图</td></tr>
+    <tr><td><code>307cd17</code></td><td>白色圆角边框（可开关 + 可调宽度）</td></tr>
+    <tr><td><code>b817c7d</code></td><td>钉图支持 Esc 关闭</td></tr>
+    <tr><td><code>9d3be8d</code></td><td>保存路径可配置 + 自动保存</td></tr>
+    <tr><td><code>119be2d</code></td><td>工具栏快捷键可自定义</td></tr>
+  </table>
+</div></section>
+
+<footer>
+  ScreenShot 截图工具 · 项目总结 · 由 Claude Code 生成<br>
+  <span style="opacity:.6">~/ScreenShotPrototype/docs/项目总结.html</span>
+</footer>
+
+</body>
+</html>
