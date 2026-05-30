@@ -45,6 +45,15 @@ final class Settings {
         set { d.set(Double(newValue), forKey: "borderWidth") }
     }
 
+    /// 保存目录（默认桌面）
+    var saveDirectory: URL {
+        get {
+            if let p = d.string(forKey: "saveDirectory") { return URL(fileURLWithPath: p) }
+            return FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+        }
+        set { d.set(newValue.path, forKey: "saveDirectory") }
+    }
+
     private func read(_ codeKey: String, _ modsKey: String) -> HotKeyCombo? {
         guard d.object(forKey: codeKey) != nil else { return nil }
         let code = UInt16(d.integer(forKey: codeKey))

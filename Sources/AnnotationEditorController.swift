@@ -154,9 +154,15 @@ final class AnnotationEditorController {
     @objc private func saveAction() {
         guard let raw = annotationView?.exportImage() else { return }
         let cg = ImageDecorator.decorate(raw, scale: screen.backingScaleFactor)
-        // 收起编辑窗再弹保存框，避免遮挡
-        window?.orderOut(nil)
 
+        // 直接保存到设置里的目录
+        if ImageSaver.save(cgImage: cg, to: Settings.shared.saveDirectory) != nil {
+            close()
+            return
+        }
+
+        // 保存失败（目录不可写等）→ 回退到手动选择路径
+        window?.orderOut(nil)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
         panel.nameFieldStringValue = "Shot.png"
