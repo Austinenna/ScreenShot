@@ -16,6 +16,7 @@ final class PinController {
 
     func show() {
         window?.makeKeyAndOrderFront(nil)
+        window?.makeFirstResponder(window?.contentView)   // 让钉图能接收 Esc
     }
 
     private func close() {
@@ -64,6 +65,16 @@ private final class PinView: NSView {
     }
 
     required init?(coder: NSCoder) { fatalError() }
+
+    override var acceptsFirstResponder: Bool { true }
+
+    // Esc 关闭（窗口为聚焦状态时；点一下钉图即聚焦）
+    override func cancelOperation(_ sender: Any?) { onRequestClose?() }
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { onRequestClose?() }   // Esc
+        else { super.keyDown(with: event) }
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         image.draw(in: bounds)
