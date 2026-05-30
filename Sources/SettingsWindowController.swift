@@ -1,16 +1,21 @@
 import AppKit
 
-/// 设置窗口：配置两种模式的快捷键
+/// 设置窗口：全局快捷键 / 工具栏快捷键 / 外观 / 保存位置
 final class SettingsWindowController: NSWindowController {
-    /// 快捷键变化后回调，让 AppDelegate 重新注册
+    /// 全局快捷键变化后回调，让 AppDelegate 重新注册
     var onHotKeysChanged: (() -> Void)?
 
     private var borderSlider: NSSlider!
     private var borderValueLabel: NSTextField!
     private var savePathField: NSTextField!
 
+    private let W: CGFloat = 440
+    private let M: CGFloat = 20            // 左右边距
+    private let recX: CGFloat = 270        // 录制控件起始 x
+    private let recW: CGFloat = 150
+
     convenience init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 420, height: 370),
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 500),
                            styleMask: [.titled, .closable],
                            backing: .buffered, defer: false)
         win.title = "设置"
@@ -21,98 +26,110 @@ final class SettingsWindowController: NSWindowController {
 
     private func buildUI() {
         guard let content = window?.contentView else { return }
+        var y = content.bounds.height - 16   // 从顶部往下排
 
-        let title = label("快捷键设置", size: 15, weight: .semibold)
-        title.frame = NSRect(x: 20, y: 328, width: 380, height: 22)
-        content.addSubview(title)
-
-        // 快捷模式
-        let quickLabel = label("快捷模式（截图后直接复制）", size: 13, weight: .regular)
-        quickLabel.frame = NSRect(x: 20, y: 282, width: 240, height: 20)
-        content.addSubview(quickLabel)
-
-        let quickRec = HotKeyRecorderView(combo: Settings.shared.quick)
-        quickRec.frame = NSRect(x: 250, y: 278, width: 150, height: 28)
-        quickRec.onChange = { combo in
-            Settings.shared.quick = combo
-            self.onHotKeysChanged?()
+        // —— 排版辅助 ——
+        func header(_ s: String) {
+            let l = label(s, size: 13, weight: .semibold)
+            l.frame = NSRect(x: M, y: y - 20, width: W - 2 * M, height: 20)
+            content.addSubview(l); y -= 28
         }
-        content.addSubview(quickRec)
-
-        // 正常模式
-        let normalLabel = label("正常模式（截图后进入标注）", size: 13, weight: .regular)
-        normalLabel.frame = NSRect(x: 20, y: 240, width: 240, height: 20)
-        content.addSubview(normalLabel)
-
-        let normalRec = HotKeyRecorderView(combo: Settings.shared.normal)
-        normalRec.frame = NSRect(x: 250, y: 236, width: 150, height: 28)
-        normalRec.onChange = { combo in
-            Settings.shared.normal = combo
-            self.onHotKeysChanged?()
+        func hint(_ s: String) {
+            let l = label(s, size: 11, weight: .regular)
+            l.textColor = .secondaryLabelColor
+            l.frame = NSRect(x: M, y: y - 16, width: W - 2 * M, height: 16)
+            content.addSubview(l); y -= 26
         }
-        content.addSubview(normalRec)
+        func separator() {
+            let box = NSBox(frame: NSRect(x: M, y: y - 1, width: W - 2 * M, height: 1))
+            box.boxType = .separator
+            content.addSubview(box); y -= 15
+        }
+        func recorderRow(_ title: String, combo: HotKeyCombo,
+                         requiresModifier: Bool, onChange: @escaping (HotKeyCombo) -> Void) {
+            let l = label(title, size: 13, weight: .regular)
+            l.frame = NSRect(x: M, y: y - 24, width: recX - M, height: 20)
+            content.addSubview(l)
+            let rec = HotKeyRecorderView(combo: combo)
+            rec.requiresModifier = requiresModifier
+            rec.frame = NSRect(x: recX, y: y - 28, width: recW, height: 28)
+            rec.onChange = onChange
+            content.addSubview(rec)
+            y -= 38
+        }
 
-        let hint = label("点输入框 → 按下组合键（需含 ⌘/⌥/⌃/⇧）。Esc 取消。", size: 11, weight: .regular)
-        hint.textColor = .secondaryLabelColor
-        hint.frame = NSRect(x: 20, y: 210, width: 380, height: 18)
-        content.addSubview(hint)
+        // —— 全局快捷键 ——
+        header("全局快捷键")
+        recorderRow("快捷模式（截图后直接复制）", combo: Settings.shared.quick,
+                    requiresModifier: true) { c in
+            Settings.shared.quick = c; self.onHotKeysChanged?()
+        }
+        recorderRow("正常模式（截图后进入标注）", combo: Settings.shared.normal,
+                    requiresModifier: true) { c in
+            Settings.shared.normal = c; self.onHotKeysChanged?()
+        }
+        hint("点输入框 → 按下组合键（需含 ⌘/⌥/⌃/⇧）。Esc 取消。")
+        separator()
 
-        // 分隔线
-        let sep = NSBox(frame: NSRect(x: 20, y: 192, width: 380, height: 1))
-        sep.boxType = .separator
-        content.addSubview(sep)
+        // —— 工具栏快捷键（截图模式内）——
+        header("工具栏快捷键（截图模式内，可用单键）")
+        recorderRow("钉图", combo: Settings.shared.pinKey,
+                    requiresModifier: false) { c in Settings.shared.pinKey = c }
+        recorderRow("复制", combo: Settings.shared.copyKey,
+                    requiresModifier: false) { c in Settings.shared.copyKey = c }
+        recorderRow("保存", combo: Settings.shared.saveKey,
+                    requiresModifier: false) { c in Settings.shared.saveKey = c }
+        separator()
 
-        // 白色圆角边框开关
+        // —— 外观：白色圆角边框 ——
         let borderToggle = NSButton(checkboxWithTitle: "为截图添加白色圆角边框",
                                     target: self, action: #selector(toggleBorder(_:)))
         borderToggle.state = Settings.shared.whiteBorder ? .on : .off
         borderToggle.font = .systemFont(ofSize: 13)
-        borderToggle.frame = NSRect(x: 20, y: 162, width: 300, height: 22)
-        content.addSubview(borderToggle)
+        borderToggle.frame = NSRect(x: M, y: y - 22, width: 300, height: 22)
+        content.addSubview(borderToggle); y -= 28
+        hint("开启后，复制 / 保存 / 钉图的截图都会带白边")
 
-        let borderHint = label("开启后，复制 / 保存 / 钉图的截图都会带白边", size: 11, weight: .regular)
-        borderHint.textColor = .secondaryLabelColor
-        borderHint.frame = NSRect(x: 38, y: 142, width: 380, height: 18)
-        content.addSubview(borderHint)
-
-        // 白边宽度滑块
         let widthLabel = label("白边宽度", size: 13, weight: .regular)
-        widthLabel.frame = NSRect(x: 38, y: 106, width: 70, height: 20)
+        widthLabel.frame = NSRect(x: M + 18, y: y - 22, width: 64, height: 20)
         content.addSubview(widthLabel)
-
         borderSlider = NSSlider(value: Double(Settings.shared.borderWidth),
                                 minValue: 0, maxValue: 40,
                                 target: self, action: #selector(sliderChanged(_:)))
-        borderSlider.frame = NSRect(x: 110, y: 104, width: 230, height: 24)
+        borderSlider.frame = NSRect(x: M + 90, y: y - 24, width: W - (M + 90) - M - 50, height: 24)
         content.addSubview(borderSlider)
-
         borderValueLabel = label("\(Int(Settings.shared.borderWidth)) pt", size: 13, weight: .medium)
         borderValueLabel.alignment = .right
-        borderValueLabel.frame = NSRect(x: 346, y: 106, width: 54, height: 20)
+        borderValueLabel.frame = NSRect(x: W - M - 50, y: y - 22, width: 50, height: 20)
         content.addSubview(borderValueLabel)
-
+        y -= 36
         updateBorderControlsEnabled()
+        separator()
 
-        // 分隔线
-        let sep2 = NSBox(frame: NSRect(x: 20, y: 86, width: 380, height: 1))
-        sep2.boxType = .separator
-        content.addSubview(sep2)
-
-        // 保存位置
-        let saveTitle = label("保存位置（点「保存」时自动存到这里）", size: 13, weight: .regular)
-        saveTitle.frame = NSRect(x: 20, y: 56, width: 380, height: 20)
-        content.addSubview(saveTitle)
-
+        // —— 保存位置 ——
+        header("保存位置（点「保存」时自动存到这里）")
         savePathField = label(Settings.shared.saveDirectory.path, size: 12, weight: .regular)
         savePathField.textColor = .secondaryLabelColor
         savePathField.lineBreakMode = .byTruncatingMiddle
-        savePathField.frame = NSRect(x: 20, y: 24, width: 290, height: 22)
+        savePathField.frame = NSRect(x: M, y: y - 24, width: W - 2 * M - 100, height: 22)
         content.addSubview(savePathField)
-
         let chooseBtn = NSButton(title: "选择…", target: self, action: #selector(chooseSaveDir))
         chooseBtn.bezelStyle = .rounded
-        chooseBtn.frame = NSRect(x: 314, y: 20, width: 86, height: 28)
+        chooseBtn.frame = NSRect(x: W - M - 90, y: y - 28, width: 90, height: 28)
         content.addSubview(chooseBtn)
+    }
+
+    // MARK: - Actions
+
+    @objc private func toggleBorder(_ sender: NSButton) {
+        Settings.shared.whiteBorder = (sender.state == .on)
+        updateBorderControlsEnabled()
+    }
+
+    @objc private func sliderChanged(_ sender: NSSlider) {
+        let v = sender.doubleValue.rounded()
+        Settings.shared.borderWidth = CGFloat(v)
+        borderValueLabel.stringValue = "\(Int(v)) pt"
     }
 
     @objc private func chooseSaveDir() {
@@ -128,17 +145,6 @@ final class SettingsWindowController: NSWindowController {
                 self?.savePathField.stringValue = url.path
             }
         }
-    }
-
-    @objc private func toggleBorder(_ sender: NSButton) {
-        Settings.shared.whiteBorder = (sender.state == .on)
-        updateBorderControlsEnabled()
-    }
-
-    @objc private func sliderChanged(_ sender: NSSlider) {
-        let v = sender.doubleValue.rounded()
-        Settings.shared.borderWidth = CGFloat(v)
-        borderValueLabel.stringValue = "\(Int(v)) pt"
     }
 
     private func updateBorderControlsEnabled() {

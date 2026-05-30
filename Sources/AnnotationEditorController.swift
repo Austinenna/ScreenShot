@@ -47,32 +47,47 @@ final class AnnotationEditorController {
         win.makeFirstResponder(canvas)
         updateToolHighlight()
 
-        // 监听 Esc / ⌘Z
+        // 监听 Esc / ⌘Z / 工具栏快捷键 1·2·3
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self else { return e }
+            // 正在输入文字时放行所有按键（让数字能正常输入）
+            if self.annotationView?.isEditingText == true { return e }
+
             if e.keyCode == 53 { self.cancel(); return nil }                      // Esc
             if e.keyCode == 6 && e.modifierFlags.contains(.command) {             // ⌘Z
                 self.annotationView?.undo(); return nil
             }
+            // 工具栏快捷键（钉图 / 复制 / 保存），可在设置中自定义
+            if self.matches(e, Settings.shared.pinKey)  { self.pinAction();  return nil }
+            if self.matches(e, Settings.shared.copyKey) { self.copyAction(); return nil }
+            if self.matches(e, Settings.shared.saveKey) { self.saveAction(); return nil }
             return e
         }
     }
 
     private var keyMonitor: Any?
 
+    /// 事件是否匹配某个快捷键（键码 + 修饰键完全一致）
+    private func matches(_ e: NSEvent, _ combo: HotKeyCombo) -> Bool {
+        let mask: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+        return e.keyCode == combo.keyCode
+            && e.modifierFlags.intersection(mask) == combo.modifierFlags.intersection(mask)
+    }
+
     // MARK: - 工具条
 
     private func buildToolbar() -> NSView {
-        let items: [(Tool?, String, String, Selector)] = [
-            (.line,  "line.diagonal",      "直线", #selector(selLine)),
-            (.arrow, "arrow.up.right",     "箭头", #selector(selArrow)),
-            (.box,   "rectangle",          "方框", #selector(selBox)),
-            (.text,  "textformat",         "文字", #selector(selText)),
-            (nil,    "arrow.uturn.backward", "撤销", #selector(undo)),
-            (nil,    "pin",                "钉图", #selector(pinAction)),
-            (nil,    "doc.on.doc",         "复制", #selector(copyAction)),
-            (nil,    "square.and.arrow.down", "保存", #selector(saveAction)),
-            (nil,    "xmark",              "取消", #selector(cancel)),
+        // (工具, SF符号, 名称, 动作, 快捷键)
+        let items: [(Tool?, String, String, Selector, HotKeyCombo?)] = [
+            (.line,  "line.diagonal",      "直线", #selector(selLine),  nil),
+            (.arrow, "arrow.up.right",     "箭头", #selector(selArrow), nil),
+            (.box,   "rectangle",          "方框", #selector(selBox),   nil),
+            (.text,  "textformat",         "文字", #selector(selText),  nil),
+            (nil,    "arrow.uturn.backward", "撤销", #selector(undo),   nil),
+            (nil,    "pin",                "钉图", #selector(pinAction),  Settings.shared.pinKey),
+            (nil,    "doc.on.doc",         "复制", #selector(copyAction), Settings.shared.copyKey),
+            (nil,    "square.and.arrow.down", "保存", #selector(saveAction), Settings.shared.saveKey),
+            (nil,    "xmark",              "取消", #selector(cancel),   nil),
         ]
 
         let btnW: CGFloat = 44, btnH: CGFloat = 36, pad: CGFloat = 6
@@ -100,13 +115,23 @@ final class AnnotationEditorController {
             b.isBordered = false
             b.image = NSImage(systemSymbolName: item.1, accessibilityDescription: item.2)
             b.imageScaling = .scaleProportionallyDown
-            b.toolTip = item.2
+            b.toolTip = item.4 == nil ? item.2 : "\(item.2) (\(item.4!.display))"
             b.target = self
             b.action = item.3
             b.wantsLayer = true
             b.layer?.cornerRadius = 6
             bar.addSubview(b)
             if let tool = item.0 { toolButtons[tool] = b }
+
+            // 在按钮右下角标出快捷键
+            if let key = item.4 {
+                let badge = NSTextField(labelWithString: key.display)
+                badge.font = .systemFont(ofSize: 9, weight: .semibold)
+                badge.textColor = .secondaryLabelColor
+                badge.alignment = .right
+                badge.frame = NSRect(x: b.frame.maxX - 26, y: b.frame.minY + 1, width: 24, height: 11)
+                bar.addSubview(badge)
+            }
         }
         return bar
     }

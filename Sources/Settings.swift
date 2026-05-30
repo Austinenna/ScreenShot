@@ -17,11 +17,18 @@ final class Settings {
     private enum Key {
         static let quickCode = "quickKeyCode";   static let quickMods = "quickKeyMods"
         static let normalCode = "normalKeyCode";  static let normalMods = "normalKeyMods"
+        static let pinCode = "pinKeyCode";   static let pinMods = "pinKeyMods"
+        static let copyCode = "copyKeyCode"; static let copyMods = "copyKeyMods"
+        static let saveCode = "saveKeyCode"; static let saveMods = "saveKeyMods"
     }
 
     /// 默认值：快捷模式 ⌥A，正常模式 ⌥S
     private static let defaultQuick  = HotKeyCombo(keyCode: 0, modifierFlags: .option) // ⌥A
     private static let defaultNormal = HotKeyCombo(keyCode: 1, modifierFlags: .option) // ⌥S
+    // 工具栏快捷键默认 1 / 2 / 3（无修饰键），键码 18/19/20
+    private static let defaultPin  = HotKeyCombo(keyCode: 18, modifierFlags: [])
+    private static let defaultCopy = HotKeyCombo(keyCode: 19, modifierFlags: [])
+    private static let defaultSave = HotKeyCombo(keyCode: 20, modifierFlags: [])
 
     var quick: HotKeyCombo {
         get { read(Key.quickCode, Key.quickMods) ?? Self.defaultQuick }
@@ -31,6 +38,20 @@ final class Settings {
     var normal: HotKeyCombo {
         get { read(Key.normalCode, Key.normalMods) ?? Self.defaultNormal }
         set { write(newValue, Key.normalCode, Key.normalMods) }
+    }
+
+    // 工具栏快捷键（截图模式内）
+    var pinKey: HotKeyCombo {
+        get { read(Key.pinCode, Key.pinMods) ?? Self.defaultPin }
+        set { write(newValue, Key.pinCode, Key.pinMods) }
+    }
+    var copyKey: HotKeyCombo {
+        get { read(Key.copyCode, Key.copyMods) ?? Self.defaultCopy }
+        set { write(newValue, Key.copyCode, Key.copyMods) }
+    }
+    var saveKey: HotKeyCombo {
+        get { read(Key.saveCode, Key.saveMods) ?? Self.defaultSave }
+        set { write(newValue, Key.saveCode, Key.saveMods) }
     }
 
     /// 是否给截图加白色圆角边框（默认关闭）

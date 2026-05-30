@@ -14,6 +14,9 @@ final class AnnotationView: NSView {
     private var dragCurrent: NSPoint?
     private var activeTextField: NSTextField?
 
+    /// 是否正在输入文字（用于让编辑器放行数字键等）
+    var isEditingText: Bool { activeTextField != nil }
+
     init(frame: NSRect, image: CGImage, selectionRect: NSRect, scale: CGFloat) {
         self.baseImage = NSImage(cgImage: image, size: selectionRect.size)
         self.selectionRect = selectionRect

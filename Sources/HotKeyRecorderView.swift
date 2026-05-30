@@ -7,6 +7,9 @@ final class HotKeyRecorderView: NSView {
     }
     var onChange: ((HotKeyCombo) -> Void)?
 
+    /// 是否强制要求修饰键（全局快捷键 true；工具栏单键 false）
+    var requiresModifier = true
+
     private var recording = false {
         didSet { needsDisplay = true }
     }
@@ -43,8 +46,8 @@ final class HotKeyRecorderView: NSView {
         }
 
         let mods = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        // 至少需要一个修饰键，避免和普通输入冲突
-        guard !mods.isEmpty else {
+        // 全局快捷键至少需要一个修饰键，避免和普通输入冲突
+        if requiresModifier && mods.isEmpty {
             NSSound.beep()
             return
         }
