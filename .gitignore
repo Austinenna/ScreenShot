@@ -1,0 +1,12 @@
+# 编译产物
+ScreenShot.app/
+*.o
+*.swiftmodule
+
+# 临时证书材料（请勿提交私钥）
+*.p12
+*.pem
+*.cnf
+
+# macOS
+.DS_Store
