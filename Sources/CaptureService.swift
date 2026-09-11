@@ -1,13 +1,13 @@
 import ScreenCaptureKit
 import AppKit
 
-/// 用 ScreenCaptureKit 截取指定屏幕区域（macOS 14+）
-@available(macOS 14.0, *)
+/// 先捕获整屏快照，再从内存快照中裁剪选区。
 enum CaptureService {
 
-    /// - globalRect: 全局屏幕坐标（左下角为原点，单位：点）
-    /// - screen: 该区域所在的屏幕
-    static func capture(globalRect: CGRect, screen: NSScreen) async -> CGImage? {
+    /// 必须在激活截图应用或显示框选窗口之前调用；快照不写入磁盘。
+    @available(macOS 14.0, *)
+    @MainActor
+    static func capture(screen: NSScreen) async -> CGImage? {
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(
                 false, onScreenWindowsOnly: false)
@@ -16,7 +16,7 @@ enum CaptureService {
                 NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
 
             guard let scDisplay = content.displays.first(where: { $0.displayID == displayID })
-                    ?? content.displays.first else { return nil }
+                    else { return nil }
 
             let filter = SCContentFilter(display: scDisplay, excludingWindows: [])
 
@@ -28,26 +28,25 @@ enum CaptureService {
             config.showsCursor = false
             config.captureResolution = .best
 
-            let full = try await SCScreenshotManager.captureImage(
+            return try await SCScreenshotManager.captureImage(
                 contentFilter: filter, configuration: config)
-
-            return crop(full, globalRect: globalRect, screen: screen, scale: scale)
         } catch {
             print("capture error: \(error)")
             return nil
         }
     }
 
-    /// 在全屏像素图上做像素级裁剪（无重采样，保持原画质）
-    private static func crop(_ full: CGImage,
-                             globalRect: CGRect,
-                             screen: NSScreen,
-                             scale: CGFloat) -> CGImage? {
+    /// 像素级裁剪并复制选区，避免裁剪图继续共享整屏图的底层存储。
+    static func crop(_ full: CGImage,
+                     globalRect: CGRect,
+                     screenFrame: CGRect,
+                     scale: CGFloat) -> CGImage? {
+        guard scale > 0, globalRect.width > 2, globalRect.height > 2 else { return nil }
         // 全局坐标 → 该屏幕局部坐标（左下原点）
-        let localX = globalRect.origin.x - screen.frame.origin.x
-        let localYBottom = globalRect.origin.y - screen.frame.origin.y
+        let localX = globalRect.origin.x - screenFrame.origin.x
+        let localYBottom = globalRect.origin.y - screenFrame.origin.y
         // CGImage 原点在左上，需翻转 Y
-        let localYTop = screen.frame.height - (localYBottom + globalRect.height)
+        let localYTop = screenFrame.height - (localYBottom + globalRect.height)
 
         // 点 → 像素
         let pixelRect = CGRect(x: (localX * scale).rounded(),
@@ -56,6 +55,16 @@ enum CaptureService {
                                height: (globalRect.height * scale).rounded())
             .intersection(CGRect(x: 0, y: 0, width: full.width, height: full.height))
 
-        return full.cropping(to: pixelRect)
+        guard !pixelRect.isNull, !pixelRect.isEmpty,
+              let cropped = full.cropping(to: pixelRect),
+              let context = CGContext(data: nil, width: cropped.width, height: cropped.height,
+                                      bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: full.colorSpace ?? CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return nil }
+        context.interpolationQuality = .none
+        context.setBlendMode(.copy)
+        context.draw(cropped, in: CGRect(x: 0, y: 0, width: cropped.width, height: cropped.height))
+        return context.makeImage()
     }
 }

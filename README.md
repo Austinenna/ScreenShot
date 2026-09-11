@@ -46,6 +46,7 @@
 - **白色圆角边框**：可在设置开关，宽度用滑块自定义（应用于复制/保存/钉图/快捷复制）
 - **自定义保存目录**：设置里选目录，点「保存」自动落盘
 - **全 Retina 分辨率**：整屏全像素截取后像素级裁剪，标注按 `backingScaleFactor` 合成，绝不发虚
+- **保留菜单与临时画面**：按截图快捷键后先捕获当前屏幕，再显示框选窗口，在静止画面上选择区域。整屏快照仅在内存中保留，完成或取消框选后释放，不自动保存到磁盘。
 - **菜单栏常驻**：无 Dock 图标（`LSUIElement`），通过菜单栏 📷 图标操作
 - **全局快捷键**：基于 Carbon `RegisterEventHotKey`，系统级生效，无需辅助功能权限
 
@@ -103,10 +104,13 @@ ScreenShotPrototype/
 全局快捷键 / 菜单栏触发
         │
         ▼
-OverlayController + SelectionView   ← 全屏遮罩，拖拽框选
-        │  (返回选区)
+CaptureService.capture              ← 激活窗口之前捕获整屏，暂存内存
+        │
         ▼
-CaptureService                      ← 整屏全像素截取 → 像素级裁剪
+OverlayController + SelectionView   ← 在冻结画面上拖拽框选
+        │  (完成或取消后释放整屏快照)
+        ▼
+CaptureService.crop                 ← 裁剪并复制选区为独立图片
         │
    ┌────┴────┐
    ▼         ▼
@@ -125,6 +129,8 @@ open ScreenShot.app
 ```
 
 构建产物 `ScreenShot.app`、`*.dmg`、`AppIcon.icns` 不纳入版本控制（见 `.gitignore`）。
+
+运行 `bash test.sh` 可验证快照的像素裁剪、Retina/副屏坐标、冻结画面绘制、取消和标注导出；测试使用合成图片，不截取用户屏幕或修改剪贴板。真实菜单截图需打开目标软件菜单后，用全局快捷键验证；点击本工具菜单栏入口本身可能已使目标菜单关闭。
 
 ### 关于权限与签名
 

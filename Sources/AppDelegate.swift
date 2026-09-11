@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var editor: AnnotationEditorController?
     private var settingsWC: SettingsWindowController?
     private var pins: [PinController] = []   // 持有钉图窗口，防止被释放
+    private var isCapturing = false         // 整屏取图期间也阻止重复触发
 
     private var quickHotKeyID: UInt32?
     private var normalHotKeyID: UInt32?
@@ -70,35 +71,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func normalCapture() { startCapture(mode: .normal) }
 
     private func startCapture(mode: CaptureMode) {
-        guard overlay == nil, editor == nil else { return } // 防止重入
+        guard !isCapturing, overlay == nil, editor == nil else { return }
+        guard #available(macOS 14.0, *) else { print("需要 macOS 14+"); return }
 
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         guard let screen else { return }
 
-        overlay = OverlayController(screen: screen) { [weak self] rect in
-            self?.overlay = nil
-            guard let rect, rect.width > 2, rect.height > 2 else { return }
-            self?.captureAndProceed(rect: rect, screen: screen, mode: mode)
-        }
-        overlay?.show()
-    }
+        // 在激活应用、显示遮罩之前取图，保留其他应用当前打开的菜单。
+        isCapturing = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isCapturing = false }
+            guard let snapshot = await CaptureService.capture(screen: screen) else {
+                self.notify(text: "截图失败，请检查屏幕录制权限")
+                return
+            }
 
-    private func captureAndProceed(rect: CGRect, screen: NSScreen, mode: CaptureMode) {
-        guard #available(macOS 14.0, *) else { print("需要 macOS 14+"); return }
-        // 等遮罩消失再截，避免截进遮罩本身
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            Task {
-                guard let cg = await CaptureService.capture(globalRect: rect, screen: screen) else {
-                    print("截图失败"); return
-                }
-                await MainActor.run {
-                    switch mode {
-                    case .quick:  self.deliverQuick(image: cg, scale: screen.backingScaleFactor)
-                    case .normal: self.openEditor(image: cg, globalRect: rect, screen: screen)
-                    }
+            self.overlay = OverlayController(screen: screen, snapshot: snapshot) { [weak self] result in
+                guard let self else { return }
+                self.overlay = nil
+                guard let (image, rect) = result else { return }
+                switch mode {
+                case .quick:  self.deliverQuick(image: image, scale: screen.backingScaleFactor)
+                case .normal: self.openEditor(image: image, globalRect: rect, screen: screen)
                 }
             }
+            self.overlay?.show()
         }
     }
 

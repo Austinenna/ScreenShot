@@ -1,19 +1,24 @@
 import Cocoa
 
-/// 管理覆盖在某块屏幕上的全屏透明窗口，用于框选
+/// 在内存中的整屏快照上框选，完成或取消后释放快照。
 final class OverlayController {
     private let screen: NSScreen
-    private let completion: (CGRect?) -> Void
+    private let completion: ((CGImage, CGRect)?) -> Void
+    private var snapshot: CGImage?
     private var window: OverlayWindow?
 
-    init(screen: NSScreen, completion: @escaping (CGRect?) -> Void) {
+    init(screen: NSScreen, snapshot: CGImage,
+         completion: @escaping ((CGImage, CGRect)?) -> Void) {
         self.screen = screen
+        self.snapshot = snapshot
         self.completion = completion
     }
 
     func show() {
+        guard let snapshot else { return }
         let win = OverlayWindow(screen: screen)
-        let view = SelectionView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        let view = SelectionView(frame: NSRect(origin: .zero, size: screen.frame.size),
+                                 snapshot: snapshot)
         view.onFinish = { [weak self] localRect in
             self?.finish(localRect: localRect)
         }
@@ -28,17 +33,21 @@ final class OverlayController {
 
     /// localRect 是相对覆盖窗（= 该屏幕）的坐标，转换成全局屏幕坐标返回
     private func finish(localRect: CGRect?) {
-        window?.orderOut(nil)
-        window = nil
-        guard let r = localRect else {
-            completion(nil)
-            return
+        var result: (CGImage, CGRect)?
+        if let r = localRect, let snapshot {
+            let global = r.offsetBy(dx: screen.frame.minX, dy: screen.frame.minY)
+            if let image = CaptureService.crop(snapshot, globalRect: global,
+                                               screenFrame: screen.frame,
+                                               scale: screen.backingScaleFactor) {
+                result = (image, global)
+            }
         }
-        let global = CGRect(x: screen.frame.origin.x + r.origin.x,
-                            y: screen.frame.origin.y + r.origin.y,
-                            width: r.width,
-                            height: r.height)
-        completion(global)
+
+        window?.orderOut(nil)
+        window?.contentView = nil
+        window = nil
+        snapshot = nil
+        completion(result)
     }
 }
 

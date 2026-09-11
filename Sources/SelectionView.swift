@@ -1,12 +1,20 @@
 import Cocoa
 
-/// 框选视图：暗化全屏 + 镂空选区 + 边框/把手 + 尺寸标签
+/// 框选视图：冻结整屏画面 + 暗化选区外部 + 边框/把手 + 尺寸标签
 final class SelectionView: NSView {
     var onFinish: ((CGRect?) -> Void)?
 
+    private let snapshot: NSImage
     private var startPoint: NSPoint?
     private var currentRect: NSRect = .zero
     private var isDragging = false
+
+    init(frame: NSRect, snapshot: CGImage) {
+        self.snapshot = NSImage(cgImage: snapshot, size: frame.size)
+        super.init(frame: frame)
+    }
+
+    required init?(coder: NSCoder) { fatalError() }
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -34,7 +42,9 @@ final class SelectionView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         guard let start = startPoint else { return }
-        let p = convert(event.locationInWindow, from: nil)
+        let location = convert(event.locationInWindow, from: nil)
+        let p = NSPoint(x: min(max(location.x, bounds.minX), bounds.maxX),
+                        y: min(max(location.y, bounds.minY), bounds.maxY))
         currentRect = NSRect(x: min(start.x, p.x),
                              y: min(start.y, p.y),
                              width: abs(p.x - start.x),
@@ -60,15 +70,15 @@ final class SelectionView: NSView {
     // MARK: - 绘制
 
     override func draw(_ dirtyRect: NSRect) {
-        // 整屏暗化
+        // 始终显示同一张快照；选区内不挖透明洞，避免露出菜单已关闭的实时桌面。
+        snapshot.draw(in: bounds)
+        let shade = NSBezierPath(rect: bounds)
+        if !currentRect.isEmpty { shade.appendRect(currentRect) }
+        shade.windingRule = .evenOdd
         NSColor.black.withAlphaComponent(0.35).setFill()
-        bounds.fill()
+        shade.fill()
 
         guard currentRect.width > 0, currentRect.height > 0 else { return }
-
-        // 镂空选区（恢复清晰）
-        NSColor.clear.setFill()
-        currentRect.fill(using: .copy)
 
         // 选区边框
         let border = NSBezierPath(rect: currentRect)
