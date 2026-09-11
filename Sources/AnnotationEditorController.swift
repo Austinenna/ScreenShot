@@ -94,11 +94,23 @@ final class AnnotationEditorController {
         let width = CGFloat(items.count) * btnW + pad * 2
         let height = btnH + pad * 2
 
-        // 工具条放在选区下方；放不下就放上方
-        var y = localRect.minY - height - 10
-        if y < 10 { y = localRect.maxY + 10 }
-        var x = localRect.midX - width / 2
-        x = min(max(x, 10), screen.frame.width - width - 10)
+        // 可用屏幕区域转成编辑器局部坐标，避开菜单栏和 Dock，并留出边距。
+        let margin: CGFloat = 10
+        let visible = screen.visibleFrame.offsetBy(dx: -screen.frame.minX,
+                                                  dy: -screen.frame.minY)
+        let safeBounds = visible.insetBy(dx: margin, dy: margin)
+        let belowY = localRect.minY - height - margin
+        let aboveY = localRect.maxY + margin
+        let maxY = safeBounds.maxY - height
+
+        // 优先选区下方，其次上方；全屏等上下都放不下的选区，回落到屏幕内。
+        var y = belowY
+        if belowY < safeBounds.minY, aboveY <= maxY {
+            y = aboveY
+        }
+        y = max(safeBounds.minY, min(y, maxY))
+        let x = max(safeBounds.minX,
+                    min(localRect.midX - width / 2, safeBounds.maxX - width))
 
         let bar = NSView(frame: NSRect(x: x, y: y, width: width, height: height))
         bar.wantsLayer = true
