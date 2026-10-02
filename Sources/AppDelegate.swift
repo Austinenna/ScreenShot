@@ -1,17 +1,19 @@
 import Cocoa
+import ScreenCaptureKit
 
 enum CaptureMode {
     case quick   // 截图后直接复制
     case normal  // 截图后进入标注
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPickerObserver {
     private var statusItem: NSStatusItem!
     private var overlay: OverlayController?
     private var editor: AnnotationEditorController?
     private var settingsWC: SettingsWindowController?
     private var pins: [PinController] = []   // 持有钉图窗口，防止被释放
     private var isCapturing = false         // 整屏取图期间也阻止重复触发
+    private var windowPicker: SCContentSharingPicker?
 
     private var quickHotKeyID: UInt32?
     private var normalHotKeyID: UInt32?
@@ -38,6 +40,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let n = Settings.shared.normal.display
         menu.addItem(withTitle: "快捷截图（直接复制）  \(q)", action: #selector(quickCapture), keyEquivalent: "")
         menu.addItem(withTitle: "标注截图  \(n)", action: #selector(normalCapture), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "截全屏（直接复制）", action: #selector(fullScreenCapture), keyEquivalent: "")
+        menu.addItem(withTitle: "截我选中的窗口（直接复制）", action: #selector(windowCapture), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
@@ -69,6 +74,96 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quickCapture()  { startCapture(mode: .quick) }
     @objc private func normalCapture() { startCapture(mode: .normal) }
+
+    /// 截取鼠标所在屏幕的完整画面并直接复制。
+    @objc private func fullScreenCapture() {
+        guard !isCapturing, overlay == nil, editor == nil else { return }
+        guard #available(macOS 14.0, *) else { print("需要 macOS 14+"); return }
+
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+        guard let screen else { return }
+
+        isCapturing = true
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isCapturing = false }
+            guard let image = await CaptureService.capture(screen: screen) else {
+                self.notify(text: "截图失败，请检查屏幕录制权限")
+                return
+            }
+            self.deliverQuick(image: image, scale: screen.backingScaleFactor)
+        }
+    }
+
+    /// 打开 macOS 系统窗口选择器，选定后只截取该窗口并直接复制。
+    @objc private func windowCapture() {
+        guard !isCapturing, overlay == nil, editor == nil else { return }
+        guard #available(macOS 14.0, *) else { print("需要 macOS 14+"); return }
+
+        isCapturing = true
+        let picker = SCContentSharingPicker.shared
+        var configuration = SCContentSharingPickerConfiguration()
+        configuration.allowedPickerModes = .singleWindow
+        configuration.allowsChangingSelectedContent = false
+        if let bundleID = Bundle.main.bundleIdentifier {
+            configuration.excludedBundleIDs = [bundleID]
+        }
+        picker.defaultConfiguration = configuration
+        picker.maximumStreamCount = 1
+        picker.add(self)
+        picker.isActive = true
+        windowPicker = picker
+        picker.present(using: .window)
+    }
+
+    // MARK: - 系统窗口选择器
+
+    func contentSharingPicker(_ picker: SCContentSharingPicker,
+                              didCancelFor stream: SCStream?) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.stopWindowPicker()
+            self.isCapturing = false
+        }
+    }
+
+    func contentSharingPicker(_ picker: SCContentSharingPicker,
+                              didUpdateWith filter: SCContentFilter,
+                              for stream: SCStream?) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isCapturing, self.windowPicker != nil else { return }
+            self.stopWindowPicker()
+            let scale = max(CGFloat(filter.pointPixelScale), 1)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer { self.isCapturing = false }
+                guard let image = await CaptureService.capture(contentFilter: filter, scale: scale) else {
+                    self.notify(text: "窗口截图失败，请重试")
+                    return
+                }
+                self.deliverQuick(image: image, scale: scale)
+            }
+        }
+    }
+
+    func contentSharingPickerStartDidFailWithError(_ error: Error) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.stopWindowPicker()
+            self.isCapturing = false
+            self.notify(text: "无法打开窗口选择器，请重试")
+            print("window picker error: \(error)")
+        }
+    }
+
+    private func stopWindowPicker() {
+        guard let picker = windowPicker else { return }
+        picker.remove(self)
+        picker.isActive = false
+        picker.maximumStreamCount = nil
+        windowPicker = nil
+    }
 
     private func startCapture(mode: CaptureMode) {
         guard !isCapturing, overlay == nil, editor == nil else { return }

@@ -1,8 +1,30 @@
 import ScreenCaptureKit
 import AppKit
 
-/// 先捕获整屏快照，再从内存快照中裁剪选区。
+/// 提供整屏、指定内容和内存快照裁剪三类截图能力。
 enum CaptureService {
+
+    /// 按内容过滤器截取指定内容（例如系统窗口选择器返回的窗口）。
+    /// 输出保持内容过滤器提供的像素比例，避免窗口截图在 Retina 屏上发虚。
+    @available(macOS 14.0, *)
+    static func capture(contentFilter: SCContentFilter, scale: CGFloat) async -> CGImage? {
+        guard scale > 0 else { return nil }
+        do {
+            let width = max(Int((contentFilter.contentRect.width * scale).rounded()), 1)
+            let height = max(Int((contentFilter.contentRect.height * scale).rounded()), 1)
+            let config = SCStreamConfiguration()
+            config.width = width
+            config.height = height
+            config.showsCursor = false
+            config.captureResolution = .best
+
+            return try await SCScreenshotManager.captureImage(
+                contentFilter: contentFilter, configuration: config)
+        } catch {
+            print("capture content error: \(error)")
+            return nil
+        }
+    }
 
     /// 必须在激活截图应用或显示框选窗口之前调用；快照不写入磁盘。
     @available(macOS 14.0, *)
