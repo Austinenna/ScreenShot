@@ -177,8 +177,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         isCapturing = true
         Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.isCapturing = false }
             guard let snapshot = await CaptureService.capture(screen: screen) else {
+                self.isCapturing = false
                 self.notify(text: "截图失败，请检查屏幕录制权限")
                 return
             }
@@ -186,6 +186,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
             self.overlay = OverlayController(screen: screen, snapshot: snapshot) { [weak self] result in
                 guard let self else { return }
                 self.overlay = nil
+                self.isCapturing = false
                 guard let (image, rect) = result else { return }
                 switch mode {
                 case .quick:  self.deliverQuick(image: image, scale: screen.backingScaleFactor)
