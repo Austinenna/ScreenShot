@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
 
     private var quickHotKeyID: UInt32?
     private var normalHotKeyID: UInt32?
+    private var fullScreenHotKeyID: UInt32?
+    private var windowCaptureHotKeyID: UInt32?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
@@ -38,11 +40,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         let menu = NSMenu()
         let q = Settings.shared.quick.display
         let n = Settings.shared.normal.display
+        let f = Settings.shared.fullScreen.display
+        let w = Settings.shared.windowCapture.display
         menu.addItem(withTitle: "快捷截图（直接复制）  \(q)", action: #selector(quickCapture), keyEquivalent: "")
         menu.addItem(withTitle: "标注截图  \(n)", action: #selector(normalCapture), keyEquivalent: "")
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "截全屏（直接复制）", action: #selector(fullScreenCapture), keyEquivalent: "")
-        menu.addItem(withTitle: "截我选中的窗口（直接复制）", action: #selector(windowCapture), keyEquivalent: "")
+        menu.addItem(withTitle: "截全屏（直接复制）  \(f)", action: #selector(fullScreenCapture), keyEquivalent: "")
+        menu.addItem(withTitle: "截我选中的窗口（直接复制）  \(w)", action: #selector(windowCapture), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
@@ -55,6 +58,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
     private func registerHotKeys() {
         if let id = quickHotKeyID { HotKeyManager.shared.unregister(id) }
         if let id = normalHotKeyID { HotKeyManager.shared.unregister(id) }
+        if let id = fullScreenHotKeyID { HotKeyManager.shared.unregister(id) }
+        if let id = windowCaptureHotKeyID { HotKeyManager.shared.unregister(id) }
 
         let quick = Settings.shared.quick
         quickHotKeyID = HotKeyManager.shared.register(
@@ -66,6 +71,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         normalHotKeyID = HotKeyManager.shared.register(
             keyCode: normal.keyCode, modifiers: normal.carbonModifiers) { [weak self] in
                 self?.startCapture(mode: .normal)
+        }
+        let fullScreen = Settings.shared.fullScreen
+        fullScreenHotKeyID = HotKeyManager.shared.register(
+            keyCode: fullScreen.keyCode, modifiers: fullScreen.carbonModifiers) { [weak self] in
+                self?.fullScreenCapture()
+        }
+        let windowCapture = Settings.shared.windowCapture
+        windowCaptureHotKeyID = HotKeyManager.shared.register(
+            keyCode: windowCapture.keyCode, modifiers: windowCapture.carbonModifiers) { [weak self] in
+                self?.windowCapture()
         }
         rebuildMenu()
     }
@@ -83,12 +98,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         guard let screen else { return }
+        guard let target = screenCaptureTarget(for: screen) else {
+            notify(text: "找不到当前显示器")
+            return
+        }
 
         isCapturing = true
+        let captureTask = Task.detached(priority: .userInitiated) {
+            await CaptureService.capture(displayID: target.displayID,
+                                         pixelWidth: target.pixelWidth,
+                                         pixelHeight: target.pixelHeight)
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.isCapturing = false }
-            guard let image = await CaptureService.capture(screen: screen) else {
+            guard let image = await captureTask.value else {
                 self.notify(text: "截图失败，请检查屏幕录制权限")
                 return
             }
@@ -165,6 +189,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         windowPicker = nil
     }
 
+    private func screenCaptureTarget(for screen: NSScreen)
+        -> (displayID: CGDirectDisplayID, pixelWidth: Int, pixelHeight: Int)? {
+        guard let displayID = (screen.deviceDescription[
+            NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value else { return nil }
+        let scale = screen.backingScaleFactor
+        return (displayID,
+                Int((screen.frame.width * scale).rounded()),
+                Int((screen.frame.height * scale).rounded()))
+    }
+
     private func startCapture(mode: CaptureMode) {
         guard !isCapturing, overlay == nil, editor == nil else { return }
         guard #available(macOS 14.0, *) else { print("需要 macOS 14+"); return }
@@ -172,12 +206,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
         guard let screen else { return }
+        guard let target = screenCaptureTarget(for: screen) else {
+            notify(text: "找不到当前显示器")
+            return
+        }
 
         // 在激活应用、显示遮罩之前取图，保留其他应用当前打开的菜单。
         isCapturing = true
+        let captureTask = Task.detached(priority: .userInitiated) {
+            await CaptureService.capture(displayID: target.displayID,
+                                         pixelWidth: target.pixelWidth,
+                                         pixelHeight: target.pixelHeight)
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            guard let snapshot = await CaptureService.capture(screen: screen) else {
+            guard let snapshot = await captureTask.value else {
                 self.isCapturing = false
                 self.notify(text: "截图失败，请检查屏幕录制权限")
                 return

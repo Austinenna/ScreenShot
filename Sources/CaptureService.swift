@@ -26,27 +26,25 @@ enum CaptureService {
         }
     }
 
-    /// 必须在激活截图应用或显示框选窗口之前调用；快照不写入磁盘。
+    /// 在激活截图应用或显示框选窗口之前截取指定显示器；快照不写入磁盘。
     @available(macOS 14.0, *)
-    @MainActor
-    static func capture(screen: NSScreen) async -> CGImage? {
+    static func capture(displayID: CGDirectDisplayID,
+                        pixelWidth: Int,
+                        pixelHeight: Int) async -> CGImage? {
+        guard pixelWidth > 0, pixelHeight > 0 else { return nil }
         do {
             let content = try await SCShareableContent.excludingDesktopWindows(
                 false, onScreenWindowsOnly: false)
-
-            let displayID = (screen.deviceDescription[
-                NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value
 
             guard let scDisplay = content.displays.first(where: { $0.displayID == displayID })
                     else { return nil }
 
             let filter = SCContentFilter(display: scDisplay, excludingWindows: [])
 
-            let scale = screen.backingScaleFactor
             let config = SCStreamConfiguration()
             // 关键：整屏按「全像素」分辨率截取，不用 sourceRect 让它帮我们缩放裁剪
-            config.width  = Int(screen.frame.width  * scale)
-            config.height = Int(screen.frame.height * scale)
+            config.width  = pixelWidth
+            config.height = pixelHeight
             config.showsCursor = false
             config.captureResolution = .best
 
@@ -56,6 +54,17 @@ enum CaptureService {
             print("capture error: \(error)")
             return nil
         }
+    }
+
+    /// 兼容按 NSScreen 调用的入口；实际捕获仍可移到后台任务执行。
+    @available(macOS 14.0, *)
+    static func capture(screen: NSScreen) async -> CGImage? {
+        guard let displayID = (screen.deviceDescription[
+            NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.uint32Value else { return nil }
+        let scale = screen.backingScaleFactor
+        return await capture(displayID: displayID,
+                             pixelWidth: Int((screen.frame.width * scale).rounded()),
+                             pixelHeight: Int((screen.frame.height * scale).rounded()))
     }
 
     /// 像素级裁剪并复制选区，避免裁剪图继续共享整屏图的底层存储。
