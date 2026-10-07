@@ -4,6 +4,7 @@ import ScreenCaptureKit
 enum CaptureMode {
     case quick   // 截图后直接复制
     case normal  // 截图后进入标注
+    case ocr     // 截图后识别文字并复制
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPickerObserver {
@@ -13,16 +14,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
     private var settingsWC: SettingsWindowController?
     private var pins: [PinController] = []   // 持有钉图窗口，防止被释放
     private var isCapturing = false         // 整屏取图期间也阻止重复触发
+    private var ocrTask: Task<String, Error>?
+    private var notifyReset: DispatchWorkItem?
     private var windowPicker: SCContentSharingPicker?
 
     private var quickHotKeyID: UInt32?
     private var normalHotKeyID: UInt32?
     private var fullScreenHotKeyID: UInt32?
     private var windowCaptureHotKeyID: UInt32?
+    private var ocrHotKeyID: UInt32?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
         registerHotKeys()
+        OCRService.prewarm()
     }
 
     // MARK: - 菜单栏
@@ -42,10 +47,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         let n = Settings.shared.normal.display
         let f = Settings.shared.fullScreen.display
         let w = Settings.shared.windowCapture.display
+        let o = Settings.shared.ocr.display
         menu.addItem(withTitle: "快捷截图（直接复制）  \(q)", action: #selector(quickCapture), keyEquivalent: "")
         menu.addItem(withTitle: "标注截图  \(n)", action: #selector(normalCapture), keyEquivalent: "")
         menu.addItem(withTitle: "截全屏（直接复制）  \(f)", action: #selector(fullScreenCapture), keyEquivalent: "")
         menu.addItem(withTitle: "截我选中的窗口（直接复制）  \(w)", action: #selector(windowCapture), keyEquivalent: "")
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "文字识别（直接复制）  \(o)", action: #selector(ocrCapture), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
@@ -60,6 +68,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         if let id = normalHotKeyID { HotKeyManager.shared.unregister(id) }
         if let id = fullScreenHotKeyID { HotKeyManager.shared.unregister(id) }
         if let id = windowCaptureHotKeyID { HotKeyManager.shared.unregister(id) }
+        if let id = ocrHotKeyID { HotKeyManager.shared.unregister(id) }
 
         let quick = Settings.shared.quick
         quickHotKeyID = HotKeyManager.shared.register(
@@ -82,6 +91,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
             keyCode: windowCapture.keyCode, modifiers: windowCapture.carbonModifiers) { [weak self] in
                 self?.windowCapture()
         }
+        let ocr = Settings.shared.ocr
+        ocrHotKeyID = HotKeyManager.shared.register(
+            keyCode: ocr.keyCode, modifiers: ocr.carbonModifiers) { [weak self] in
+                self?.startCapture(mode: .ocr)
+        }
         rebuildMenu()
     }
 
@@ -89,10 +103,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
 
     @objc private func quickCapture()  { startCapture(mode: .quick) }
     @objc private func normalCapture() { startCapture(mode: .normal) }
+    @objc private func ocrCapture()    { startCapture(mode: .ocr) }
 
     /// 截取鼠标所在屏幕的完整画面并直接复制。
     @objc private func fullScreenCapture() {
-        guard !isCapturing, overlay == nil, editor == nil else { return }
+        guard !isCapturing, overlay == nil, editor == nil, ocrTask == nil else { return }
         guard #available(macOS 14.0, *) else { print("需要 macOS 14+"); return }
 
         let mouse = NSEvent.mouseLocation
@@ -122,7 +137,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
 
     /// 打开 macOS 系统窗口选择器，选定后只截取该窗口并直接复制。
     @objc private func windowCapture() {
-        guard !isCapturing, overlay == nil, editor == nil else { return }
+        guard !isCapturing, overlay == nil, editor == nil, ocrTask == nil else { return }
         guard #available(macOS 14.0, *) else { print("需要 macOS 14+"); return }
 
         isCapturing = true
@@ -200,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
     }
 
     private func startCapture(mode: CaptureMode) {
-        guard !isCapturing, overlay == nil, editor == nil else { return }
+        guard !isCapturing, overlay == nil, editor == nil, ocrTask == nil else { return }
         guard #available(macOS 14.0, *) else { print("需要 macOS 14+"); return }
 
         let mouse = NSEvent.mouseLocation
@@ -234,9 +249,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
                 switch mode {
                 case .quick:  self.deliverQuick(image: image, scale: screen.backingScaleFactor)
                 case .normal: self.openEditor(image: image, globalRect: rect, screen: screen)
+                case .ocr:    self.recognizeAndCopy(image: image)
                 }
             }
             self.overlay?.show()
+        }
+    }
+
+    // OCR 模式：直接识别未添加标注和白边的选区，完成后复制纯文本。
+    @MainActor
+    private func recognizeAndCopy(image: CGImage) {
+        notify(text: "正在识别文字…", clearsAfter: nil)
+        let task = Task.detached(priority: .userInitiated) {
+            try OCRService.recognizeText(in: image)
+        }
+        ocrTask = task
+        Task { @MainActor [weak self] in
+            guard let self else { task.cancel(); return }
+            defer { self.ocrTask = nil }
+            do {
+                let text = try await task.value
+                if text.isEmpty {
+                    self.notify(text: "未识别到文字")
+                } else if OCRService.copyText(text) {
+                    self.notify(text: "已复制文字")
+                } else {
+                    self.notify(text: "复制文字失败，请重试")
+                }
+            } catch {
+                self.notify(text: "文字识别失败，请重试")
+                print("OCR error: \(error)")
+            }
         }
     }
 
@@ -283,12 +326,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
 
     // MARK: - 杂项
 
-    private func notify(text: String) {
+    private func notify(text: String, clearsAfter delay: TimeInterval? = 1.5) {
+        notifyReset?.cancel()
+        notifyReset = nil
         statusItem.button?.title = " " + text
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+        guard let delay else { return }
+        let reset = DispatchWorkItem { [weak self] in
             self?.statusItem.button?.title = ""
         }
+        notifyReset = reset
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: reset)
     }
 
-    @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func quit() {
+        ocrTask?.cancel()
+        NSApp.terminate(nil)
+    }
 }

@@ -9,7 +9,7 @@ struct HotKeyCombo: Equatable {
     var carbonModifiers: UInt32 { KeyCodeMap.carbonModifiers(modifierFlags) }
 }
 
-/// 全局设置：截图快捷键与输出偏好，持久化到 UserDefaults
+/// 全局设置：截图/文字识别快捷键与输出偏好，持久化到 UserDefaults
 final class Settings {
     static let shared = Settings()
 
@@ -19,16 +19,18 @@ final class Settings {
         static let normalCode = "normalKeyCode";  static let normalMods = "normalKeyMods"
         static let fullScreenCode = "fullScreenKeyCode"; static let fullScreenMods = "fullScreenKeyMods"
         static let windowCaptureCode = "windowCaptureKeyCode"; static let windowCaptureMods = "windowCaptureKeyMods"
+        static let ocrCode = "ocrKeyCode"; static let ocrMods = "ocrKeyMods"
         static let pinCode = "pinKeyCode";   static let pinMods = "pinKeyMods"
         static let copyCode = "copyKeyCode"; static let copyMods = "copyKeyMods"
         static let saveCode = "saveKeyCode"; static let saveMods = "saveKeyMods"
     }
 
-    /// 默认值：快捷模式 ⌥A、正常模式 ⌥S、全屏 ⌥4、窗口 ⌥5
+    /// 默认值：快捷模式 ⌥A、正常模式 ⌥S、全屏 ⌥4、窗口 ⌥5、文字识别 ⌥3
     private static let defaultQuick  = HotKeyCombo(keyCode: 0, modifierFlags: .option) // ⌥A
     private static let defaultNormal = HotKeyCombo(keyCode: 1, modifierFlags: .option) // ⌥S
     private static let defaultFullScreen = HotKeyCombo(keyCode: 21, modifierFlags: .option) // ⌥4
     private static let defaultWindowCapture = HotKeyCombo(keyCode: 23, modifierFlags: .option) // ⌥5
+    private static let defaultOCR = HotKeyCombo(keyCode: 20, modifierFlags: .option)  // ⌥3
     // 工具栏快捷键默认 1 / 2 / 3（无修饰键），键码 18/19/20
     private static let defaultPin  = HotKeyCombo(keyCode: 18, modifierFlags: [])
     private static let defaultCopy = HotKeyCombo(keyCode: 19, modifierFlags: [])
@@ -54,6 +56,10 @@ final class Settings {
         set { write(newValue, Key.windowCaptureCode, Key.windowCaptureMods) }
     }
 
+    var ocr: HotKeyCombo {
+        get { read(Key.ocrCode, Key.ocrMods) ?? Self.defaultOCR }
+        set { write(newValue, Key.ocrCode, Key.ocrMods) }
+    }
 
     // 工具栏快捷键（截图模式内）
     var pinKey: HotKeyCombo {

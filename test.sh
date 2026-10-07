@@ -8,3 +8,7 @@ swiftc Sources/CaptureService.swift Sources/SelectionView.swift \
   -module-cache-path "$TEST_DIR/ModuleCache" \
   -framework Cocoa -framework ScreenCaptureKit -o "$TEST_DIR/CaptureSnapshotTests"
 "$TEST_DIR/CaptureSnapshotTests"
+swiftc Sources/OCRService.swift Tests/OCRTests.swift \
+  -module-cache-path "$TEST_DIR/ModuleCache" \
+  -framework Cocoa -framework Vision -o "$TEST_DIR/OCRTests"
+"$TEST_DIR/OCRTests"

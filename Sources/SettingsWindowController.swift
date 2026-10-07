@@ -15,7 +15,7 @@ final class SettingsWindowController: NSWindowController {
     private let recW: CGFloat = 150
 
     convenience init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 576),
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 614),
                            styleMask: [.titled, .closable],
                            backing: .buffered, defer: false)
         win.title = "设置"
@@ -75,6 +75,10 @@ final class SettingsWindowController: NSWindowController {
         recorderRow("截我选中的窗口（直接复制）", combo: Settings.shared.windowCapture,
                     requiresModifier: true) { c in
             Settings.shared.windowCapture = c; self.onHotKeysChanged?()
+        }
+        recorderRow("文字识别（截图后复制文字）", combo: Settings.shared.ocr,
+                    requiresModifier: true) { c in
+            Settings.shared.ocr = c; self.onHotKeysChanged?()
         }
         hint("点输入框 → 按下组合键（需含 ⌘/⌥/⌃/⇧）。Esc 取消。")
         separator()

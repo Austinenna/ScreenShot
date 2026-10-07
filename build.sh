@@ -19,6 +19,7 @@ swiftc -O \
   -o "$APP/Contents/MacOS/ScreenShot" \
   -framework Cocoa \
   -framework ScreenCaptureKit \
+  -framework Vision \
   -framework Carbon
 
 # 用固定的自签名证书签名：TCC 据此把屏幕录制授权绑定到「证书+BundleID」，
