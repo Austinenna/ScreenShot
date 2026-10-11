@@ -15,7 +15,7 @@ final class SettingsWindowController: NSWindowController {
     private let recW: CGFloat = 150
 
     convenience init() {
-        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 614),
+        let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 576),
                            styleMask: [.titled, .closable],
                            backing: .buffered, defer: false)
         win.title = "设置"
@@ -60,13 +60,9 @@ final class SettingsWindowController: NSWindowController {
 
         // —— 全局快捷键 ——
         header("全局快捷键")
-        recorderRow("快捷模式（截图后直接复制）", combo: Settings.shared.quick,
+        recorderRow("区域截图（左键复制 / 右键标注）", combo: Settings.shared.selection,
                     requiresModifier: true) { c in
-            Settings.shared.quick = c; self.onHotKeysChanged?()
-        }
-        recorderRow("正常模式（截图后进入标注）", combo: Settings.shared.normal,
-                    requiresModifier: true) { c in
-            Settings.shared.normal = c; self.onHotKeysChanged?()
+            Settings.shared.selection = c; self.onHotKeysChanged?()
         }
         recorderRow("截全屏（直接复制）", combo: Settings.shared.fullScreen,
                     requiresModifier: true) { c in
@@ -80,7 +76,7 @@ final class SettingsWindowController: NSWindowController {
                     requiresModifier: true) { c in
             Settings.shared.ocr = c; self.onHotKeysChanged?()
         }
-        hint("点输入框 → 按下组合键（需含 ⌘/⌥/⌃/⇧）。Esc 取消。")
+        hint("点输入框 → 按下组合键（需含 ⌘/⌥/⌃/⇧）。进入框选后，左键直接复制，右键进入标注。")
         separator()
 
         // —— 工具栏快捷键（截图模式内）——

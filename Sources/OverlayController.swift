@@ -3,12 +3,12 @@ import Cocoa
 /// 在内存中的整屏快照上框选，完成或取消后释放快照。
 final class OverlayController {
     private let screen: NSScreen
-    private let completion: ((CGImage, CGRect)?) -> Void
+    private let completion: ((CGImage, CGRect, SelectionOutput)?) -> Void
     private var snapshot: CGImage?
     private var window: OverlayWindow?
 
     init(screen: NSScreen, snapshot: CGImage,
-         completion: @escaping ((CGImage, CGRect)?) -> Void) {
+         completion: @escaping ((CGImage, CGRect, SelectionOutput)?) -> Void) {
         self.screen = screen
         self.snapshot = snapshot
         self.completion = completion
@@ -19,8 +19,8 @@ final class OverlayController {
         let win = OverlayWindow(screen: screen)
         let view = SelectionView(frame: NSRect(origin: .zero, size: screen.frame.size),
                                  snapshot: snapshot)
-        view.onFinish = { [weak self] localRect in
-            self?.finish(localRect: localRect)
+        view.onFinish = { [weak self] localRect, output in
+            self?.finish(localRect: localRect, output: output)
         }
         win.contentView = view
         window = win
@@ -32,14 +32,14 @@ final class OverlayController {
     }
 
     /// localRect 是相对覆盖窗（= 该屏幕）的坐标，转换成全局屏幕坐标返回
-    private func finish(localRect: CGRect?) {
-        var result: (CGImage, CGRect)?
+    private func finish(localRect: CGRect?, output: SelectionOutput) {
+        var result: (CGImage, CGRect, SelectionOutput)?
         if let r = localRect, let snapshot {
             let global = r.offsetBy(dx: screen.frame.minX, dy: screen.frame.minY)
             if let image = CaptureService.crop(snapshot, globalRect: global,
                                                screenFrame: screen.frame,
                                                scale: screen.backingScaleFactor) {
-                result = (image, global)
+                result = (image, global, output)
             }
         }
 

@@ -89,10 +89,12 @@ struct CaptureSnapshotTests {
         precondition((150...180).contains(Int(pixels[outside])) && pixels[outside + 3] == 255,
                      "选区外应该显示暗化的冻结画面")
 
-        var completed: CGRect?
-        view.onFinish = { completed = $0 }
+        var completed: (CGRect, SelectionOutput)?
+        view.onFinish = { rect, output in
+            completed = rect.map { ($0, output) }
+        }
         view.mouseUp(with: mouse(.leftMouseUp, at: CGPoint(x: selection.maxX, y: selection.maxY)))
-        precondition(completed == selection)
+        precondition(completed?.0 == selection && completed?.1 == .directCopy)
         // Esc 取消；单击也应取消。
         let escape = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
                                      timestamp: 0, windowNumber: 0, context: nil,
@@ -103,6 +105,18 @@ struct CaptureSnapshotTests {
         view.mouseDown(with: mouse(.leftMouseDown, at: CGPoint(x: 20, y: 20)))
         view.mouseUp(with: mouse(.leftMouseUp, at: CGPoint(x: 20, y: 20)))
         precondition(completed == nil)
+
+        // 右键拖拽同样完成选区，但输出动作应切换为标注。
+        let annotatedSelection = CGRect(x: 60, y: 30, width: 80, height: 50)
+        view.rightMouseDown(with: mouse(.rightMouseDown, at: annotatedSelection.origin))
+        view.rightMouseDragged(with: mouse(.rightMouseDragged,
+                                            at: CGPoint(x: annotatedSelection.maxX,
+                                                        y: annotatedSelection.maxY)))
+        view.rightMouseUp(with: mouse(.rightMouseUp,
+                                      at: CGPoint(x: annotatedSelection.maxX,
+                                                  y: annotatedSelection.maxY)))
+        precondition(completed?.0 == annotatedSelection && completed?.1 == .annotation,
+                     "右键框选应进入标注流程")
 
         // 从冻结图中裁出的小图可直接进入原有标注导出，不包含遮罩和工具条。
         let crop = CaptureService.crop(white, globalRect: selection, screenFrame: screen, scale: 1)!

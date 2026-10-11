@@ -15,8 +15,8 @@ final class Settings {
 
     private let d = UserDefaults.standard
     private enum Key {
-        static let quickCode = "quickKeyCode";   static let quickMods = "quickKeyMods"
-        static let normalCode = "normalKeyCode";  static let normalMods = "normalKeyMods"
+        // 沿用 quickKeyCode / quickKeyMods，避免合并模式后丢失已有快捷键设置。
+        static let selectionCode = "quickKeyCode"; static let selectionMods = "quickKeyMods"
         static let fullScreenCode = "fullScreenKeyCode"; static let fullScreenMods = "fullScreenKeyMods"
         static let windowCaptureCode = "windowCaptureKeyCode"; static let windowCaptureMods = "windowCaptureKeyMods"
         static let ocrCode = "ocrKeyCode"; static let ocrMods = "ocrKeyMods"
@@ -25,9 +25,8 @@ final class Settings {
         static let saveCode = "saveKeyCode"; static let saveMods = "saveKeyMods"
     }
 
-    /// 默认值：快捷模式 ⌥A、正常模式 ⌥S、全屏 ⌥4、窗口 ⌥5、文字识别 ⌥3
-    private static let defaultQuick  = HotKeyCombo(keyCode: 0, modifierFlags: .option) // ⌥A
-    private static let defaultNormal = HotKeyCombo(keyCode: 1, modifierFlags: .option) // ⌥S
+    /// 默认值：区域截图 ⌥A、全屏 ⌥4、窗口 ⌥5、文字识别 ⌥3
+    private static let defaultSelection = HotKeyCombo(keyCode: 0, modifierFlags: .option) // ⌥A
     private static let defaultFullScreen = HotKeyCombo(keyCode: 21, modifierFlags: .option) // ⌥4
     private static let defaultWindowCapture = HotKeyCombo(keyCode: 23, modifierFlags: .option) // ⌥5
     private static let defaultOCR = HotKeyCombo(keyCode: 20, modifierFlags: .option)  // ⌥3
@@ -36,14 +35,9 @@ final class Settings {
     private static let defaultCopy = HotKeyCombo(keyCode: 19, modifierFlags: [])
     private static let defaultSave = HotKeyCombo(keyCode: 20, modifierFlags: [])
 
-    var quick: HotKeyCombo {
-        get { read(Key.quickCode, Key.quickMods) ?? Self.defaultQuick }
-        set { write(newValue, Key.quickCode, Key.quickMods) }
-    }
-
-    var normal: HotKeyCombo {
-        get { read(Key.normalCode, Key.normalMods) ?? Self.defaultNormal }
-        set { write(newValue, Key.normalCode, Key.normalMods) }
+    var selection: HotKeyCombo {
+        get { read(Key.selectionCode, Key.selectionMods) ?? Self.defaultSelection }
+        set { write(newValue, Key.selectionCode, Key.selectionMods) }
     }
 
     var fullScreen: HotKeyCombo {

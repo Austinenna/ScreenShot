@@ -2,8 +2,7 @@ import Cocoa
 import ScreenCaptureKit
 
 enum CaptureMode {
-    case quick   // 截图后直接复制
-    case normal  // 截图后进入标注
+    case selection // 左键直接复制，右键进入标注
     case ocr     // 截图后识别文字并复制
 }
 
@@ -22,8 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
     private var notifyReset: DispatchWorkItem?
     private var windowPicker: SCContentSharingPicker?
 
-    private var quickHotKeyID: UInt32?
-    private var normalHotKeyID: UInt32?
+    private var selectionHotKeyID: UInt32?
     private var fullScreenHotKeyID: UInt32?
     private var windowCaptureHotKeyID: UInt32?
     private var ocrHotKeyID: UInt32?
@@ -52,13 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
 
     private func rebuildMenu() {
         let menu = NSMenu()
-        let q = Settings.shared.quick.display
-        let n = Settings.shared.normal.display
+        let s = Settings.shared.selection.display
         let f = Settings.shared.fullScreen.display
         let w = Settings.shared.windowCapture.display
         let o = Settings.shared.ocr.display
-        menu.addItem(withTitle: "快捷截图（直接复制）  \(q)", action: #selector(quickCapture), keyEquivalent: "")
-        menu.addItem(withTitle: "标注截图  \(n)", action: #selector(normalCapture), keyEquivalent: "")
+        menu.addItem(withTitle: "区域截图（左键复制 / 右键标注）  \(s)",
+                     action: #selector(selectionCapture), keyEquivalent: "")
         menu.addItem(withTitle: "截全屏（直接复制）  \(f)", action: #selector(fullScreenCapture), keyEquivalent: "")
         menu.addItem(withTitle: "截我选中的窗口（直接复制）  \(w)", action: #selector(windowCapture), keyEquivalent: "")
         menu.addItem(withTitle: "最近截图…", action: #selector(openHistory), keyEquivalent: "")
@@ -74,22 +71,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
     // MARK: - 快捷键
 
     private func registerHotKeys() {
-        if let id = quickHotKeyID { HotKeyManager.shared.unregister(id) }
-        if let id = normalHotKeyID { HotKeyManager.shared.unregister(id) }
+        if let id = selectionHotKeyID { HotKeyManager.shared.unregister(id) }
         if let id = fullScreenHotKeyID { HotKeyManager.shared.unregister(id) }
         if let id = windowCaptureHotKeyID { HotKeyManager.shared.unregister(id) }
         if let id = ocrHotKeyID { HotKeyManager.shared.unregister(id) }
 
-        let quick = Settings.shared.quick
-        quickHotKeyID = HotKeyManager.shared.register(
-            keyCode: quick.keyCode, modifiers: quick.carbonModifiers) { [weak self] in
-                self?.startCapture(mode: .quick)
-        }
-
-        let normal = Settings.shared.normal
-        normalHotKeyID = HotKeyManager.shared.register(
-            keyCode: normal.keyCode, modifiers: normal.carbonModifiers) { [weak self] in
-                self?.startCapture(mode: .normal)
+        let selection = Settings.shared.selection
+        selectionHotKeyID = HotKeyManager.shared.register(
+            keyCode: selection.keyCode, modifiers: selection.carbonModifiers) { [weak self] in
+                self?.startCapture(mode: .selection)
         }
         let fullScreen = Settings.shared.fullScreen
         fullScreenHotKeyID = HotKeyManager.shared.register(
@@ -111,8 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
 
     // MARK: - 截图流程
 
-    @objc private func quickCapture()  { startCapture(mode: .quick) }
-    @objc private func normalCapture() { startCapture(mode: .normal) }
+    @objc private func selectionCapture() { startCapture(mode: .selection) }
     @objc private func ocrCapture()    { startCapture(mode: .ocr) }
 
     /// 截取鼠标所在屏幕的完整画面并直接复制。
@@ -255,10 +244,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
                 guard let self else { return }
                 self.overlay = nil
                 self.isCapturing = false
-                guard let (image, rect) = result else { return }
+                guard let (image, rect, output) = result else { return }
                 switch mode {
-                case .quick:  self.deliverQuick(image: image, scale: screen.backingScaleFactor, source: "区域截图")
-                case .normal: self.openEditor(image: image, globalRect: rect, screen: screen)
+                case .selection:
+                    switch output {
+                    case .directCopy:
+                        self.deliverQuick(image: image, scale: screen.backingScaleFactor, source: "区域截图")
+                    case .annotation:
+                        self.openEditor(image: image, globalRect: rect, screen: screen)
+                    }
                 case .ocr:    self.recognizeAndCopy(image: image)
                 }
             }
@@ -293,7 +287,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         }
     }
 
-    // 快捷模式：直接复制
+    // 左键框选：直接复制
     @MainActor
     private func deliverQuick(image: CGImage, scale: CGFloat, source: String) {
         let out = ImageDecorator.decorate(image, scale: scale)
@@ -305,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         cacheImage(out, source: source)
     }
 
-    // 正常模式：进入标注编辑器
+    // 右键框选：进入标注编辑器
     @MainActor
     private func openEditor(image: CGImage, globalRect: CGRect, screen: NSScreen) {
         editor = AnnotationEditorController(

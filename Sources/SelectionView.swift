@@ -1,13 +1,20 @@
 import Cocoa
 
+/// 框选完成后要执行的输出动作。
+enum SelectionOutput: Equatable {
+    case directCopy
+    case annotation
+}
+
 /// 框选视图：冻结整屏画面 + 暗化选区外部 + 边框/把手 + 尺寸标签
 final class SelectionView: NSView {
-    var onFinish: ((CGRect?) -> Void)?
+    var onFinish: ((CGRect?, SelectionOutput) -> Void)?
 
     private let snapshot: NSImage
     private var startPoint: NSPoint?
     private var currentRect: NSRect = .zero
     private var isDragging = false
+    private var output: SelectionOutput = .directCopy
 
     init(frame: NSRect, snapshot: CGImage) {
         self.snapshot = NSImage(cgImage: snapshot, size: frame.size)
@@ -34,13 +41,30 @@ final class SelectionView: NSView {
     // MARK: - 鼠标
 
     override func mouseDown(with event: NSEvent) {
+        beginSelection(with: event, output: .directCopy)
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        beginSelection(with: event, output: .annotation)
+    }
+
+    private func beginSelection(with event: NSEvent, output: SelectionOutput) {
         startPoint = convert(event.locationInWindow, from: nil)
         currentRect = .zero
         isDragging = true
+        self.output = output
         needsDisplay = true
     }
 
     override func mouseDragged(with event: NSEvent) {
+        updateSelection(with: event)
+    }
+
+    override func rightMouseDragged(with event: NSEvent) {
+        updateSelection(with: event)
+    }
+
+    private func updateSelection(with event: NSEvent) {
         guard let start = startPoint else { return }
         let location = convert(event.locationInWindow, from: nil)
         let p = NSPoint(x: min(max(location.x, bounds.minX), bounds.maxX),
@@ -53,17 +77,25 @@ final class SelectionView: NSView {
     }
 
     override func mouseUp(with event: NSEvent) {
+        finishSelection()
+    }
+
+    override func rightMouseUp(with event: NSEvent) {
+        finishSelection()
+    }
+
+    private func finishSelection() {
         isDragging = false
         if currentRect.width > 2 && currentRect.height > 2 {
-            onFinish?(currentRect)
+            onFinish?(currentRect, output)
         } else {
-            onFinish?(nil)  // 只是点了一下，取消
+            onFinish?(nil, output)  // 只是点了一下，取消
         }
     }
 
     override func keyDown(with event: NSEvent) {
         if event.keyCode == 53 { // Esc
-            onFinish?(nil)
+            onFinish?(nil, output)
         }
     }
 
