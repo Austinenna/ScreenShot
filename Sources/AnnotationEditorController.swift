@@ -8,6 +8,7 @@ final class AnnotationEditorController {
     private let localRect: NSRect          // 选区在该屏幕的局部坐标（点）
     private let onClose: () -> Void
     private let onPin: (CGImage, CGRect) -> Void
+    private let onCache: (CGImage) -> Void
 
     private var window: OverlayWindow?
     private var annotationView: AnnotationView?
@@ -17,12 +18,14 @@ final class AnnotationEditorController {
     /// - onPin: 用户点「钉图」时回调（带合成图 + 全局位置），由上层创建钉图窗口
     init(image: CGImage, globalRect: CGRect, screen: NSScreen,
          onClose: @escaping () -> Void,
-         onPin: @escaping (CGImage, CGRect) -> Void) {
+         onPin: @escaping (CGImage, CGRect) -> Void,
+         onCache: @escaping (CGImage) -> Void) {
         self.image = image
         self.screen = screen
         self.globalRect = globalRect
         self.onClose = onClose
         self.onPin = onPin
+        self.onCache = onCache
         self.localRect = NSRect(x: globalRect.minX - screen.frame.minX,
                                 y: globalRect.minY - screen.frame.minY,
                                 width: globalRect.width, height: globalRect.height)
@@ -181,6 +184,7 @@ final class AnnotationEditorController {
         guard let cg = annotationView?.exportImage() else { return }
         let scale = screen.backingScaleFactor
         let out = ImageDecorator.decorate(cg, scale: scale)
+        onCache(out)
         let size = NSSize(width: CGFloat(out.width) / scale, height: CGFloat(out.height) / scale)
         let img = NSImage(cgImage: out, size: size)
         NSPasteboard.general.clearContents()
@@ -191,6 +195,7 @@ final class AnnotationEditorController {
     @objc private func saveAction() {
         guard let raw = annotationView?.exportImage() else { return }
         let cg = ImageDecorator.decorate(raw, scale: screen.backingScaleFactor)
+        onCache(cg)
 
         // 直接保存到设置里的目录
         if ImageSaver.save(cgImage: cg, to: Settings.shared.saveDirectory) != nil {

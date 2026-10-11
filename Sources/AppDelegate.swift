@@ -13,6 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
     private var editor: AnnotationEditorController?
     private var settingsWC: SettingsWindowController?
     private var pins: [PinController] = []   // 持有钉图窗口，防止被释放
+    private var pinCacheIDs: [ObjectIdentifier: String] = [:]
+    private var historyWC: HistoryWindowController?
+    private let screenshotCache = ScreenshotCache.shared
+    private var cacheCleanupTimer: Timer?
     private var isCapturing = false         // 整屏取图期间也阻止重复触发
     private var ocrTask: Task<String, Error>?
     private var notifyReset: DispatchWorkItem?
@@ -28,6 +32,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         setupStatusItem()
         registerHotKeys()
         OCRService.prewarm()
+        purgeExpiredCache()
+        cacheCleanupTimer = Timer.scheduledTimer(withTimeInterval: 60,
+                                                  repeats: true) { [weak self] _ in
+            self?.purgeExpiredCache()
+        }
     }
 
     // MARK: - 菜单栏
@@ -52,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         menu.addItem(withTitle: "标注截图  \(n)", action: #selector(normalCapture), keyEquivalent: "")
         menu.addItem(withTitle: "截全屏（直接复制）  \(f)", action: #selector(fullScreenCapture), keyEquivalent: "")
         menu.addItem(withTitle: "截我选中的窗口（直接复制）  \(w)", action: #selector(windowCapture), keyEquivalent: "")
+        menu.addItem(withTitle: "最近截图…", action: #selector(openHistory), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "文字识别（直接复制）  \(o)", action: #selector(ocrCapture), keyEquivalent: "")
         menu.addItem(.separator())
@@ -131,7 +141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
                 self.notify(text: "截图失败，请检查屏幕录制权限")
                 return
             }
-            self.deliverQuick(image: image, scale: screen.backingScaleFactor)
+            self.deliverQuick(image: image, scale: screen.backingScaleFactor, source: "全屏截图")
         }
     }
 
@@ -181,7 +191,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
                     self.notify(text: "窗口截图失败，请重试")
                     return
                 }
-                self.deliverQuick(image: image, scale: scale)
+                self.deliverQuick(image: image, scale: scale, source: "窗口截图")
             }
         }
     }
@@ -247,7 +257,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
                 self.isCapturing = false
                 guard let (image, rect) = result else { return }
                 switch mode {
-                case .quick:  self.deliverQuick(image: image, scale: screen.backingScaleFactor)
+                case .quick:  self.deliverQuick(image: image, scale: screen.backingScaleFactor, source: "区域截图")
                 case .normal: self.openEditor(image: image, globalRect: rect, screen: screen)
                 case .ocr:    self.recognizeAndCopy(image: image)
                 }
@@ -285,13 +295,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
 
     // 快捷模式：直接复制
     @MainActor
-    private func deliverQuick(image: CGImage, scale: CGFloat) {
+    private func deliverQuick(image: CGImage, scale: CGFloat, source: String) {
         let out = ImageDecorator.decorate(image, scale: scale)
         let pointSize = NSSize(width: CGFloat(out.width) / scale, height: CGFloat(out.height) / scale)
         let nsImage = NSImage(cgImage: out, size: pointSize)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects([nsImage])
         notify(text: "已复制到剪贴板")
+        cacheImage(out, source: source)
     }
 
     // 正常模式：进入标注编辑器
@@ -300,18 +311,147 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
         editor = AnnotationEditorController(
             image: image, globalRect: globalRect, screen: screen,
             onClose: { [weak self] in self?.editor = nil },
-            onPin: { [weak self] cg, rect in self?.pin(image: cg, globalRect: rect) })
+            onPin: { [weak self] cg, rect in
+                self?.cacheAndPin(image: cg, globalRect: rect, source: "标注截图")
+            },
+            onCache: { [weak self] image in
+                self?.cacheImage(image, source: "标注截图")
+            })
         editor?.show()
     }
 
     // 创建一个钉图窗口并持有
     @MainActor
-    private func pin(image: CGImage, globalRect: CGRect) {
+    private func pin(image: CGImage, globalRect: CGRect, cacheID: String? = nil) {
         let pin = PinController(image: image, globalRect: globalRect) { [weak self] controller in
-            self?.pins.removeAll { $0 === controller }
+            guard let self else { return }
+            self.pins.removeAll { $0 === controller }
+            self.pinCacheIDs.removeValue(forKey: ObjectIdentifier(controller))
         }
         pins.append(pin)
+        if let cacheID {
+            pinCacheIDs[ObjectIdentifier(pin)] = cacheID
+        }
         pin.show()
+    }
+
+    /// 把最终输出的图片写入文件缓存。复制动作本身不等待磁盘写入，避免影响截图响应。
+    @MainActor
+    private func cacheImage(_ image: CGImage, source: String) {
+        let width = image.width
+        let height = image.height
+        let cache = screenshotCache
+        Task.detached(priority: .utility) { [weak self] in
+            do {
+                let representation = NSBitmapImageRep(cgImage: image)
+                guard let png = representation.representation(using: .png, properties: [:]) else {
+                    throw ScreenshotCacheError.invalidImageData
+                }
+                _ = try await cache.add(pngData: png, source: source,
+                                        width: width, height: height)
+                await MainActor.run { [weak self] in self?.historyWC?.refresh() }
+            } catch {
+                await MainActor.run { [weak self] in
+                    self?.notify(text: "截图未加入历史")
+                }
+                print("screenshot cache error: \(error)")
+            }
+        }
+    }
+
+    /// 历史面板里的钉图需要先登记缓存，再把记录 ID 绑定到 PinController。
+    @MainActor
+    private func cacheAndPin(image: CGImage, globalRect: CGRect, source: String) {
+        let width = image.width
+        let height = image.height
+        let cache = screenshotCache
+        Task.detached(priority: .utility) { [weak self] in
+            do {
+                let representation = NSBitmapImageRep(cgImage: image)
+                guard let png = representation.representation(using: .png, properties: [:]) else {
+                    throw ScreenshotCacheError.invalidImageData
+                }
+                let record = try await cache.add(pngData: png, source: source,
+                                                 width: width, height: height)
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.pin(image: image, globalRect: globalRect, cacheID: record.id)
+                    self.historyWC?.refresh()
+                }
+            } catch {
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.pin(image: image, globalRect: globalRect)
+                    self.notify(text: "已钉图，但未加入截图历史")
+                }
+                print("screenshot cache pin error: \(error)")
+            }
+        }
+    }
+
+    private func purgeExpiredCache() {
+        let cache = screenshotCache
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let removed = try await cache.purgeExpired()
+                guard !removed.isEmpty else { return }
+                let ids = Set(removed.map(\.id))
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    let expiredPins = self.pins.filter { pin in
+                        guard let id = self.pinCacheIDs[ObjectIdentifier(pin)] else { return false }
+                        return ids.contains(id)
+                    }
+                    expiredPins.forEach { $0.closeFromCacheExpiry() }
+                    self.historyWC?.refresh()
+                    self.notify(text: "截图已过期，已从历史和钉图移除")
+                }
+            } catch {
+                print("screenshot cache purge error: \(error)")
+            }
+        }
+    }
+
+    @MainActor @objc private func openHistory() {
+        if historyWC == nil {
+            let dataSource = ScreenshotCacheHistoryDataSource(cache: screenshotCache)
+            historyWC = HistoryWindowController(
+                dataSource: dataSource,
+                onCopy: { [weak self] _, image in
+                    guard let self else { return }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.writeObjects([image])
+                    self.notify(text: "已重新复制截图")
+                },
+                onPin: { [weak self] item, image in
+                    self?.pinHistoryItem(item, image: image)
+                })
+        }
+        historyWC?.showAndFocus()
+    }
+
+    @MainActor
+    private func pinHistoryItem(_ item: ScreenshotHistoryItem, image: NSImage) {
+        guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else {
+            notify(text: "读取截图失败")
+            return
+        }
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+        guard let screen else { return }
+        let visible = screen.visibleFrame
+        let aspect = CGFloat(cg.height) / max(CGFloat(cg.width), 1)
+        var width = min(max(image.size.width, 120), visible.width * 0.72)
+        var height = width * aspect
+        if height > visible.height * 0.72 {
+            height = visible.height * 0.72
+            width = height / max(aspect, 0.01)
+        }
+        let origin = CGPoint(x: visible.midX - width / 2, y: visible.midY - height / 2)
+        pin(image: cg, globalRect: CGRect(origin: origin, size: CGSize(width: width, height: height)),
+            cacheID: item.id)
+        notify(text: "已钉图 · 24 小时后自动关闭")
     }
 
     // MARK: - 设置

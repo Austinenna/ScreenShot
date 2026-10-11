@@ -12,3 +12,7 @@ swiftc Sources/OCRService.swift Tests/OCRTests.swift \
   -module-cache-path "$TEST_DIR/ModuleCache" \
   -framework Cocoa -framework Vision -o "$TEST_DIR/OCRTests"
 "$TEST_DIR/OCRTests"
+swiftc Sources/ScreenshotCache.swift Tests/ScreenshotCacheTests.swift \
+  -module-cache-path "$TEST_DIR/ModuleCache" \
+  -framework Cocoa -o "$TEST_DIR/ScreenshotCacheTests"
+"$TEST_DIR/ScreenshotCacheTests"

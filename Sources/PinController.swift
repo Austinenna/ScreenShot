@@ -19,6 +19,11 @@ final class PinController {
         window?.makeFirstResponder(window?.contentView)   // 让钉图能接收 Esc
     }
 
+    /// 缓存过期时由上层调用，确保窗口和内存中的图片一起释放。
+    func closeFromCacheExpiry() {
+        close()
+    }
+
     private func close() {
         window?.orderOut(nil)
         window = nil
