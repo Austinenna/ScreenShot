@@ -174,6 +174,24 @@ open ScreenShot.app
 
 测试还会真实调用 Vision，验证中英文混排识别、1x/2x 图片、空白图片、文本顺序，并使用独立测试剪贴板验证纯文本复制及空结果保护。Vision 测试需能访问系统识别服务，受限执行环境可能需要在正常本机权限下运行。
 
+### OCR 连续失败排查（2026-10-14）
+
+本机 macOS 27.0.1（26A434、Apple M2）复现过原生识别模型在使用期间被系统回收的故障：Vision / TextRecognition 随后读取已消失的模型资源，返回 `e5rt_execution_stream_operation_create_precompiled_compute_operation_with_options call failed (Code: 13)`。应用启动预热也使用这些模型，因此用户第一次框选就可能失败，继续重试仍然失败。
+
+本次在正常本机权限下使用合成文字图片验证，关键证据如下（时间为 UTC+8）：
+
+| 时间 | 观察结果 |
+| --- | --- |
+| 14:22:57 | 新生成的文字检测模型 `H14G.e5`、`main/main_ane/model.anehash` 均带有 `EF_IS_PURGEABLE` 标记（通过 `getattrlist` 只读查询） |
+| 14:23:08 | 两个文件消失；同一时间 `deleted` / `deleted_helper` 记录低空间回收，目标可用空间约 14.8 GB，日志中的可用空间约 11.8 GB，并实际执行 `fsctl` 回收 |
+| 14:23:20 | 同一张合成图首次识别成功，第二、第三次均报模型资源缺失，错误路径正是前述 `model.anehash` |
+
+模型位于系统为进程创建的 `~/Library/Caches/<进程名>/com.apple.e5rt.e5bundlecache/`；它与本应用保存截图的 `Application Support/ScreenShot/Cache` 是不同目录。错误完整日志明确包含 `Missing E5 bundle resource required for loading ExecutionStreamOperation`。只补回临时测试进程的模型元数据后，错误进一步变为 `ANE model load has failed for on-device compiled macho`，说明只补元数据还不足以恢复底层模型。
+
+CPU 设备配置、请求复用、显式释放临时对象、序列请求和 VisionKit 对照均未稳定通过连续识别；没有将这些未奏效的尝试加入应用。未启用预热的对照同样会在后续请求失败，因此取消预热也不足以解决问题。
+
+建议的恢复验证是先使可用磁盘空间高于系统当时的回收目标并留出余量，再重启 ScreenShot，让系统重新准备模型，然后连续测试中英文、繁体及不同尺寸图片。本次仅完成原因调查，未清理现有缓存、未修改 OCR 实现，也尚未验证释放空间后的恢复情况。不要把此记录泛化为所有 OCR 失败的原因，应先核对具体错误及系统日志。
+
 ### 关于权限与签名
 
 - 首次运行需在 **系统设置 › 隐私与安全性 › 屏幕录制** 中授权，授权后**重启 app** 生效。
