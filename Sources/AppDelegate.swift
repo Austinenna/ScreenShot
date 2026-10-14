@@ -399,7 +399,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SCContentSharingPicker
                     }
                     expiredPins.forEach { $0.closeFromCacheExpiry() }
                     self.historyWC?.refresh()
-                    self.notify(text: "截图已过期，已从历史和钉图移除")
                 }
             } catch {
                 print("screenshot cache purge error: \(error)")
