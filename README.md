@@ -3,7 +3,7 @@
 一个 macOS 原生截图标注工具，用 **Swift + AppKit + ScreenCaptureKit** 构建，零第三方依赖。
 全局快捷键触发、区域框选、左右键选择直接复制或标注、钉图、OCR 文字复制、自动保存、可选白色圆角边框。
 
-> 项目位置：`~/ScreenShotPrototype`
+> 项目位置：`~/Projects/apps/screenshot`
 
 ---
 
@@ -93,7 +93,7 @@
 ## 项目结构
 
 ```
-ScreenShotPrototype/
+screenshot/
 ├── build.sh                    # 编译 + 签名，产出 ScreenShot.app
 ├── package-dmg.sh              # 一键打包 DMG（先编译再打包）
 ├── make-icon.sh                # 把 Icon.png 转成应用图标 AppIcon.icns
@@ -163,7 +163,7 @@ ScreenshotCache → PNG + index.json → 最近截图历史 → 复制 / 钉图 
 ## 构建与运行（开发者）
 
 ```bash
-cd ~/ScreenShotPrototype
+cd ~/Projects/apps/screenshot
 ./build.sh          # 编译并签名，产出 ScreenShot.app
 open ScreenShot.app
 ```
